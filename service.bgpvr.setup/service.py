@@ -208,6 +208,9 @@ def write_pvr_settings(server_url, username, password):
   <setting id="epgUrl">{epg_url}</setting>
   <setting id="epgPath"></setting>
   <setting id="useEpgGenreText">false</setting>
+  <setting id="catchupEnabled">true</setting>
+  <setting id="catchupSource">0</setting>
+  <setting id="catchupDays">7</setting>
 </settings>
 """
 
@@ -219,6 +222,9 @@ def write_pvr_settings(server_url, username, password):
   <setting id="epgPathType">1</setting>
   <setting id="epgUrl">{epg_url}</setting>
   <setting id="m3uRefreshMode">2</setting>
+  <setting id="catchupEnabled">true</setting>
+  <setting id="catchupSource">0</setting>
+  <setting id="catchupDays">7</setting>
 </settings>
 """
 
