@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addons><addon id="service.bgpvr.setup" name="BGPVR Setup" version="1.0.2" provider-name="BGPVR">
+
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+  </requires>
+
+  
+  <extension point="xbmc.service" library="service.py" start="startup" />
+
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">1-Click BGPVR Live TV Setup</summary>
+    <summary lang="bg">Автоматична настройка на BGPVR</summary>
+    <description lang="en">
+      Automatically configures IPTV Simple Client for your BGPVR server.
+      Enter your server URL, username and password — Kodi does the rest.
+      Live TV, EPG and recordings all set up in one step.
+      To reconfigure: change settings and restart Kodi.
+    </description>
+    <description lang="bg">
+      Автоматично конфигурира IPTV Simple Client за вашия BGPVR сървър.
+      Въведете URL на сървъра, потребителско име и парола — Kodi прави останалото.
+    </description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  </extension>
+
+</addon><addon id="plugin.video.bgpvr" name="BGPVR Live TV" version="1.0.0" provider-name="BGPVR">
+
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+    
+    <import addon="service.bgpvr.setup" version="1.0.0" />
+  </requires>
+
+  <extension point="xbmc.python.pluginsource" library="default.py">
+    <provides>video</provides>
+  </extension>
+
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Browse and play BGPVR channels</summary>
+    <summary lang="bg">Разглеждайте и гледайте BGPVR канали</summary>
+    <description lang="en">
+      Browse live TV channels by category, play streams, and view channel icons.
+      Credentials are shared with the BGPVR Setup addon — configure once, works everywhere.
+    </description>
+    <description lang="bg">
+      Разглеждайте Live TV канали по категории и гледайте стриймове.
+      Данните за вход се споделят с BGPVR Setup addon.
+    </description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  </extension>
+
+</addon><addon id="script.bgpvr.advancedsettings" name="BGPVR Buffering Fix" version="1.0.0" provider-name="BGPVR">
+
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+  </requires>
+
+  <extension point="xbmc.python.script" library="default.py">
+    <provides>executable</provides>
+  </extension>
+
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Optimizes Kodi buffering for IPTV streaming</summary>
+    <summary lang="bg">Оптимизира буферирането на Kodi за IPTV</summary>
+    <description lang="en">
+      Writes an optimised advancedsettings.xml: 100 MB buffer, readfactor 8.
+      One click — no more buffering or stuttering on live streams.
+    </description>
+    <description lang="bg">
+      Записва оптимизиран advancedsettings.xml: 100MB буфер, readfactor 8.
+      Един клик — без спиране на картината при гледане на Live TV.
+    </description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  </extension>
+
+</addon><addon id="repository.bgpvr" name="BGPVR Add-on Repository" version="1.0.0" provider-name="BGPVR">
+
+  <extension point="xbmc.addon.repository" name="BGPVR Add-on Repository">
+    <dir>
+      <info compressed="false">https://k.bgpvr.com/addons.xml</info>
+      <checksum>https://k.bgpvr.com/addons.xml.md5</checksum>
+      <datadir zip="true">https://k.bgpvr.com</datadir>
+    </dir>
+  </extension>
+
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Official BGPVR Kodi Repository</summary>
+    <description lang="en">
+      Provides BGPVR Setup, BGPVR Live TV, and the Buffering Fix addon.
+      Works with any BGPVR server — enter your URL, username and password.
+    </description>
+    <platform>all</platform>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  </extension>
+
+</addon></addons>

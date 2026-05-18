@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.bgpvr"
+       name="BGPVR Live TV"
+       version="1.0.0"
+       provider-name="BGPVR">
+
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+    <!-- Reads credentials from the setup service addon -->
+    <import addon="service.bgpvr.setup" version="1.0.0"/>
+  </requires>
+
+  <extension point="xbmc.python.pluginsource" library="default.py">
+    <provides>video</provides>
+  </extension>
+
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Browse and play BGPVR channels</summary>
+    <summary lang="bg">Разглеждайте и гледайте BGPVR канали</summary>
+    <description lang="en">
+      Browse live TV channels by category, play streams, and view channel icons.
+      Credentials are shared with the BGPVR Setup addon — configure once, works everywhere.
+    </description>
+    <description lang="bg">
+      Разглеждайте Live TV канали по категории и гледайте стриймове.
+      Данните за вход се споделят с BGPVR Setup addon.
+    </description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  </extension>
+
+</addon>

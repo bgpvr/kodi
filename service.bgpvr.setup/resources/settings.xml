@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+  <category label="BGPVR Server">
+    <setting id="server_url" type="text" label="Server URL"  default="https://pvr.bgpvr.com"/>
+    <setting id="username"   type="text" label="Username"    default=""/>
+    <setting id="password"   type="text" label="Password"    option="hidden" default=""/>
+    <setting id="btn_restart" type="action" label="Save &amp; Restart Kodi" action="RestartApp"/>
+  </category>
+  <category label="Info">
+    <setting id="configured_key" type="text" label="Configured for" default="" visible="false"/>
+  </category>
+</settings>
