@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="repository.bgpvr"
        name="BGPVR Add-on Repository"
-       version="1.0.0"
+       version="1.0.1"
        provider-name="BGPVR">
 
   <extension point="xbmc.addon.repository" name="BGPVR Add-on Repository">
@@ -9,6 +9,11 @@
       <info compressed="false">https://k.bgpvr.com/addons.xml</info>
       <checksum>https://k.bgpvr.com/addons.xml.md5</checksum>
       <datadir zip="true">https://k.bgpvr.com</datadir>
+    </dir>
+    <dir>
+      <info compressed="false">https://bgpvr.github.io/kodi/addons.xml</info>
+      <checksum>https://bgpvr.github.io/kodi/addons.xml.md5</checksum>
+      <datadir zip="true">https://bgpvr.github.io/kodi</datadir>
     </dir>
   </extension>
 
