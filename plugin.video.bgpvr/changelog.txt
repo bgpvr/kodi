@@ -1,0 +1,10 @@
+v1.1.0 (31 Oct 2026)
+- Films and Series: browse by category, seasons and episodes; play in Kodi's own player (mkv too)
+- Kodi keeps the resume point and watched mark for films and episodes
+- Main menu: Live TV, Films, Series
+- English and Bulgarian strings (resources/language)
+- API answers cached for 5 minutes while browsing
+- Credentials are masked in every log line and error dialog
+
+v1.0.0
+- Live TV categories and channels

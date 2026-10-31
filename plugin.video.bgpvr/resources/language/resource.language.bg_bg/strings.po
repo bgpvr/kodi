@@ -1,0 +1,42 @@
+# Kodi Media Center language file
+# Addon id: plugin.video.bgpvr
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: bg_BG\n"
+
+msgctxt "#30001"
+msgid "Live TV"
+msgstr "Телевизия на живо"
+
+msgctxt "#30002"
+msgid "Films"
+msgstr "Филми"
+
+msgctxt "#30003"
+msgid "Series"
+msgstr "Сериали"
+
+msgctxt "#30004"
+msgid "All Channels"
+msgstr "Всички канали"
+
+msgctxt "#30005"
+msgid "Season"
+msgstr "Сезон"
+
+msgctxt "#30006"
+msgid "Episode"
+msgstr "Епизод"
+
+msgctxt "#30100"
+msgid "Server not configured yet.\n\nInstall and run [B]BGPVR Setup[/B] first, or open its settings and enter your server URL, username and password."
+msgstr "Сървърът още не е настроен.\n\nИнсталирайте и пуснете [B]BGPVR Setup[/B] или отворете настройките му и въведете адреса на сървъра, потребителското име и паролата."
+
+msgctxt "#30101"
+msgid "Sign-in failed: check the username and password in BGPVR Setup."
+msgstr "Входът не успя: проверете потребителското име и паролата в BGPVR Setup."
+
+msgctxt "#30102"
+msgid "Could not reach the BGPVR server. Try again in a moment."
+msgstr "Няма връзка със сървъра на BGPVR. Опитайте отново след малко."
