@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import ssl
 import sys
 import types
 import unittest
@@ -68,12 +69,15 @@ def make_stubs():
         def __init__(self, aid=None): self.aid = aid
         def getSettingString(self, k):
             return {"server_url": R.cfg[0], "username": R.cfg[1], "password": R.cfg[2]}[k]
+        def getSetting(self, k): return "true" if k == "allow_self_signed" and R.selfsigned else ""
         def getLocalizedString(self, i): return f"S{i}"
         def openSettings(self): pass
 
     xbmcaddon = types.ModuleType("xbmcaddon")
     xbmcaddon.Addon = Addon
-    sys.modules.update(xbmc=xbmc, xbmcgui=xbmcgui, xbmcplugin=xbmcplugin, xbmcaddon=xbmcaddon)
+    xbmcvfs = types.ModuleType("xbmcvfs")
+    xbmcvfs.translatePath = lambda p: R.ca_path
+    sys.modules.update(xbmc=xbmc, xbmcgui=xbmcgui, xbmcplugin=xbmcplugin, xbmcaddon=xbmcaddon, xbmcvfs=xbmcvfs)
 
 
 FAKE = {
@@ -112,6 +116,8 @@ class PluginTest(unittest.TestCase):
         R.requests = []
         R.fail = None
         R.server_token = TOKEN
+        R.selfsigned = False
+        R.ca_path = "/nonexistent/cacert.pem"
         make_stubs()
 
     def run_plugin(self, query=""):
@@ -290,6 +296,38 @@ class PluginTest(unittest.TestCase):
         self.run_plugin("?mode=vod")
         self.assertEqual(R.dialogs, ["S30100"])
         self.assertEqual(R.requests, [])
+
+    # --- TLS -------------------------------------------------------------------
+    def test_tls_verified_by_default(self):
+        mod = self.run_plugin()
+        ctx = mod.ssl_context()
+        self.assertEqual((ctx.verify_mode, ctx.check_hostname), (ssl.CERT_REQUIRED, True))
+
+    def test_tls_uses_kodi_ca_file_when_present(self):
+        mod = self.run_plugin()
+        R.ca_path = PLUGIN                                # any existing file stands in for cacert.pem
+        seen = []
+        orig = ssl.create_default_context
+        mod.ssl.create_default_context = lambda cafile=None: seen.append(cafile) or orig()
+        try:
+            mod.ssl_context()
+        finally:
+            mod.ssl.create_default_context = orig
+        self.assertEqual(seen, [PLUGIN])
+
+    def test_tls_self_signed_allowed_warns_once(self):
+        R.selfsigned = True
+        mod = self.run_plugin()
+        ctx1, ctx2 = mod.ssl_context(), mod.ssl_context()
+        self.assertEqual((ctx1.verify_mode, ctx1.check_hostname), (ssl.CERT_NONE, False))
+        self.assertEqual(sum("Certificate checks are OFF" in m for m in R.logs), 1)
+        self.assert_no_secrets()
+
+    def test_tls_failure_shows_certificate_message(self):
+        R.fail = urllib.error.URLError(ssl.SSLCertVerificationError(1, "certificate verify failed"))
+        self.run_plugin("?mode=vod")
+        self.assertEqual(R.dialogs, ["S30104"])
+        self.assert_no_secrets()
 
     def test_mask(self):
         mod = self.run_plugin()

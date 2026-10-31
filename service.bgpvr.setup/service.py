@@ -27,7 +27,7 @@ except ImportError:
 
 ADDON_ID   = "service.bgpvr.setup"
 PVR_ID     = "pvr.iptvsimple"
-SSL_CTX    = ssl._create_unverified_context()
+KODI_CA    = "special://xbmc/system/certs/cacert.pem"   # Kodi's bundled CA list (Android has no usable system one)
 
 BOOT_SETTLE_MS  = 3000
 AFTER_ENABLE_MS = 4000
@@ -69,6 +69,29 @@ def set_setting(key, value):
             a.setSetting(key, str(value))
     except Exception as e:
         log(f"set_setting {key}: {e}", xbmc.LOGWARNING)
+
+
+# ---------------------------------------------------------------------------
+# TLS: certificates verified (hostname included) unless "Allow self-signed
+# certificate" (Advanced) is on; requests only ever go to the configured server.
+# ---------------------------------------------------------------------------
+
+_warned = []
+
+
+def ssl_context():
+    if get_setting("allow_self_signed").lower() == "true":
+        if not _warned:
+            _warned.append(1)
+            log("Certificate checks are OFF for the BGPVR server (self-signed allowed)", xbmc.LOGWARNING)
+        return ssl._create_unverified_context()
+    ca = xbmcvfs.translatePath(KODI_CA)
+    return ssl.create_default_context(cafile=ca if os.path.isfile(ca) else None)
+
+
+def cert_failed(e):
+    return isinstance(e, ssl.SSLCertVerificationError) or \
+        isinstance(getattr(e, "reason", None), ssl.SSLCertVerificationError)
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +166,7 @@ def validate_credentials(server_url, username, password):
         url = f"{server_url}/player_api.php?{params}"
         log(f"Validating credentials at {server_url}")
         req  = Request(url, headers={"User-Agent": "Kodi BGPVR/1.0"})
-        resp = urlopen(req, timeout=15, context=SSL_CTX)
+        resp = urlopen(req, timeout=15, context=ssl_context())
         data = json.loads(resp.read().decode("utf-8"))
 
         if not isinstance(data, dict):
@@ -157,6 +180,8 @@ def validate_credentials(server_url, username, password):
             return True, "OK"
         return False, "Server returned unexpected response"
     except Exception as e:
+        if cert_failed(e):
+            return False, _addon().getLocalizedString(30201)
         return False, str(e)
 
 
@@ -167,7 +192,7 @@ def validate_credentials(server_url, username, password):
 def _api(server_url, username, password, **params):
     params.update(username=username, password=password)
     req = Request(f"{server_url}/player_api.php?{urlencode(params)}", headers={"User-Agent": "Kodi BGPVR/1.0"})
-    return json.loads(urlopen(req, timeout=20, context=SSL_CTX).read().decode("utf-8"))
+    return json.loads(urlopen(req, timeout=20, context=ssl_context()).read().decode("utf-8"))
 
 
 def get_stream_token(server_url, username, password):

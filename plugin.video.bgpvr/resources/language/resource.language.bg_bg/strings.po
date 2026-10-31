@@ -44,3 +44,7 @@ msgstr "Няма връзка със сървъра на BGPVR. Опитайте
 msgctxt "#30103"
 msgid "The server did not give this account a stream token, so it cannot play here. Ask your provider to update the BGPVR server."
 msgstr "Сървърът не даде токен за гледане на този акаунт, затова тук не може да се пуска. Помолете доставчика си да обнови сървъра на BGPVR."
+
+msgctxt "#30104"
+msgid "The server's security certificate could not be checked, so BGPVR did not connect. Check the server address. If your provider uses its own certificate, turn on \"Allow self-signed certificate\" in BGPVR Setup > Advanced."
+msgstr "Сертификатът за сигурност на сървъра не можа да бъде проверен, затова BGPVR не се свърза. Проверете адреса на сървъра. Ако доставчикът ви използва собствен сертификат, включете „Разреши самоподписан сертификат“ в BGPVR Setup > Разширени."

@@ -1,3 +1,8 @@
+v1.1.2 (1 Nov 2026)
+- Server certificates are verified (hostname too), using Kodi's bundled CA list when present, else the system one
+- Clear message (EN + BG) when the certificate check fails
+- Self-signed certificates only when "Allow self-signed certificate" is on in BGPVR Setup > Advanced (warned once in the log)
+
 v1.1.1 (31 Oct 2026)
 - Live, film and episode play addresses carry the stream token (taken from the server's direct_source), never the account password
 - A token the server refuses (401/403) is fetched again once; the password is used only for the player_api sign-in calls

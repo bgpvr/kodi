@@ -11,11 +11,13 @@ import re
 import ssl
 import time
 import hashlib
+import os
 
 import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcplugin
+import xbmcvfs
 
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode, parse_qs, quote, unquote, urlsplit
@@ -24,7 +26,7 @@ SETUP_ADDON_ID = "service.bgpvr.setup"
 ADDON          = xbmcaddon.Addon()
 HANDLE         = int(sys.argv[1])
 BASE_URL       = sys.argv[0]
-SSL_CTX        = ssl._create_unverified_context()
+KODI_CA        = "special://xbmc/system/certs/cacert.pem"   # Kodi's bundled CA list (Android has no usable system one)
 CACHE_TTL      = 300          # seconds an API answer is reused while browsing
 CACHE_PREFIX   = "bgpvr.cache."
 TOKEN_PREFIX   = "bgpvr.token."
@@ -85,6 +87,37 @@ def require_config():
 
 
 # ---------------------------------------------------------------------------
+# TLS: certificates are verified (hostname included) unless the user allowed a
+# self-signed certificate in BGPVR Setup > Advanced. Every request goes to the
+# configured server only, so the switch never weakens any other host.
+# ---------------------------------------------------------------------------
+
+def allow_self_signed():
+    try:
+        a = xbmcaddon.Addon(SETUP_ADDON_ID)
+        return a.getSetting("allow_self_signed").lower() == "true"
+    except Exception:
+        return False
+
+
+def ssl_context():
+    if allow_self_signed():
+        home = xbmcgui.Window(10000)
+        if not home.getProperty("bgpvr.selfsigned.warned"):
+            home.setProperty("bgpvr.selfsigned.warned", "1")
+            log("Certificate checks are OFF for the BGPVR server (self-signed allowed in BGPVR Setup)",
+                xbmc.LOGWARNING)
+        return ssl._create_unverified_context()
+    ca = xbmcvfs.translatePath(KODI_CA)
+    return ssl.create_default_context(cafile=ca if os.path.isfile(ca) else None)
+
+
+def cert_failed(e):
+    return isinstance(e, ssl.SSLCertVerificationError) or \
+        isinstance(getattr(e, "reason", None), ssl.SSLCertVerificationError)
+
+
+# ---------------------------------------------------------------------------
 # API request (cached in a home-window property for CACHE_TTL seconds)
 # ---------------------------------------------------------------------------
 
@@ -114,14 +147,18 @@ def api_request(action, extra_params=None, fresh=False):
     url = f"{server_url}/player_api.php?{urlencode(params)}"
     log(f"API: {server_url}/player_api.php action={action} {extra_params or ''}")
     try:
-        req  = Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.1"})
-        resp = urlopen(req, timeout=15, context=SSL_CTX)
+        req  = Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.2"})
+        resp = urlopen(req, timeout=15, context=ssl_context())
         body = resp.read().decode("utf-8")
         data = json.loads(body)
     except Exception as e:
         # HTTPError 401 = wrong username / password (the server answers auth:0 with 401)
         if getattr(e, "code", None) == 401:
             xbmcgui.Dialog().ok("BGPVR", L(30101))
+            return None
+        if cert_failed(e):
+            log(f"API error ({action}): certificate check failed", xbmc.LOGERROR)
+            xbmcgui.Dialog().ok("BGPVR", L(30104))
             return None
         detail = mask(f"{type(e).__name__}: {e}", username, password, cached_token()[0])[:300]
         log(f"API error ({action}): {detail}", xbmc.LOGERROR)
@@ -229,7 +266,7 @@ def token_ok(tok):
     url = f"{server_url}/player_api.php?" + urlencode(
         {"username": username, "password": unquote(tok), "action": "get_live_categories"})
     try:
-        urlopen(Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.1"}), timeout=15, context=SSL_CTX).read()
+        urlopen(Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.2"}), timeout=15, context=ssl_context()).read()
     except Exception as e:
         if getattr(e, "code", None) in (401, 403):
             log("Stream token refused; fetching a new one")

@@ -4,6 +4,7 @@ import io
 import json
 import os
 import shutil
+import ssl
 from pathlib import Path
 import sys
 import tempfile
@@ -46,6 +47,7 @@ def load(tmp, settings, server_token):
         def __init__(self, aid=None): pass
         def getSettingString(self, k): return settings.get(k, "")
         def setSettingString(self, k, v): settings[k] = v
+        def getLocalizedString(self, i): return f"S{i}"
 
     xbmcaddon = types.ModuleType("xbmcaddon")
     xbmcaddon.Addon = Addon
@@ -58,6 +60,8 @@ def load(tmp, settings, server_token):
 
     def fake_urlopen(req, timeout=None, context=None):
         q = parse_qs(urlsplit(req.full_url).query)
+        if settings.get("_fail"):
+            raise settings["_fail"]
         if q["password"] != [PASS]:
             raise urllib.error.HTTPError("u", 401, "UNAUTHORIZED", {}, None)
         cred = server_token.replace("@", "%40").replace("/", "%2F").replace(" ", "%20")
@@ -122,6 +126,29 @@ class SetupTokenTest(unittest.TestCase):
         mod.migrate_to_token()
         self.assertTrue(mod.pvr_settings_hold_password(PASS))
         self.assertEqual(xbmc.rpc, [])
+
+
+class SetupTlsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+
+    def test_verified_by_default(self):
+        mod, _ = load(self.tmp, {}, TOKEN)
+        ctx = mod.ssl_context()
+        self.assertEqual((ctx.verify_mode, ctx.check_hostname), (ssl.CERT_REQUIRED, True))
+
+    def test_self_signed_setting(self):
+        mod, xbmc = load(self.tmp, {"allow_self_signed": "true"}, TOKEN)
+        ctx = mod.ssl_context()
+        mod.ssl_context()
+        self.assertEqual((ctx.verify_mode, ctx.check_hostname), (ssl.CERT_NONE, False))
+        self.assertEqual(sum("Certificate checks are OFF" in m for m in xbmc.logs), 1)
+
+    def test_certificate_failure_message(self):
+        fail = urllib.error.URLError(ssl.SSLCertVerificationError(1, "certificate verify failed"))
+        mod, _ = load(self.tmp, {"_fail": fail}, TOKEN)
+        self.assertEqual(mod.validate_credentials(SERVER, USER, PASS), (False, "S30201"))
 
 
 if __name__ == "__main__":

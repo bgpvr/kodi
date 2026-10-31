@@ -6,6 +6,9 @@
     <setting id="password"   type="text" label="Password"    option="hidden" default=""/>
     <setting id="btn_restart" type="action" label="Save &amp; Restart Kodi" action="RestartApp"/>
   </category>
+  <category label="30202">
+    <setting id="allow_self_signed" type="bool" label="30200" default="false"/>
+  </category>
   <category label="Info">
     <setting id="configured_key" type="text" label="Configured for" default="" visible="false"/>
   </category>

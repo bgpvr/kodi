@@ -1,0 +1,18 @@
+# Kodi Media Center language file
+# Addon id: service.bgpvr.setup
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en_GB\n"
+
+msgctxt "#30200"
+msgid "Allow self-signed certificate (not recommended)"
+msgstr ""
+
+msgctxt "#30201"
+msgid "The server's security certificate could not be checked, so BGPVR did not connect. Check the server address. If your provider uses its own certificate, turn on \"Allow self-signed certificate\" in BGPVR Setup > Advanced."
+msgstr ""
+
+msgctxt "#30202"
+msgid "Advanced"
+msgstr ""
