@@ -18,7 +18,7 @@ import xbmcgui
 import xbmcplugin
 
 from urllib.request import Request, urlopen
-from urllib.parse import urlencode, parse_qs, quote
+from urllib.parse import urlencode, parse_qs, quote, unquote, urlsplit
 
 SETUP_ADDON_ID = "service.bgpvr.setup"
 ADDON          = xbmcaddon.Addon()
@@ -27,6 +27,9 @@ BASE_URL       = sys.argv[0]
 SSL_CTX        = ssl._create_unverified_context()
 CACHE_TTL      = 300          # seconds an API answer is reused while browsing
 CACHE_PREFIX   = "bgpvr.cache."
+TOKEN_PREFIX   = "bgpvr.token."
+# The credential slot of a play address the suite hands out (direct_source): its stream token
+CRED_RE        = re.compile(r"/(?:live|movie|series)/[^/]+/([^/]+)/[^/]+$")
 
 
 def L(string_id):
@@ -90,7 +93,7 @@ def _cache_key(server_url, username, action, extra):
     return CACHE_PREFIX + hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
-def api_request(action, extra_params=None):
+def api_request(action, extra_params=None, fresh=False):
     cfg = require_config()
     if cfg is None:
         return None
@@ -98,7 +101,7 @@ def api_request(action, extra_params=None):
 
     home = xbmcgui.Window(10000)
     key = _cache_key(server_url, username, action, extra_params)
-    cached = home.getProperty(key)
+    cached = "" if fresh else home.getProperty(key)
     if cached:
         stamp, _, body = cached.partition("|")
         if time.time() - float(stamp) < CACHE_TTL:
@@ -111,7 +114,7 @@ def api_request(action, extra_params=None):
     url = f"{server_url}/player_api.php?{urlencode(params)}"
     log(f"API: {server_url}/player_api.php action={action} {extra_params or ''}")
     try:
-        req  = Request(url, headers={"User-Agent": "Kodi BGPVR/1.1"})
+        req  = Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.1"})
         resp = urlopen(req, timeout=15, context=SSL_CTX)
         body = resp.read().decode("utf-8")
         data = json.loads(body)
@@ -120,7 +123,7 @@ def api_request(action, extra_params=None):
         if getattr(e, "code", None) == 401:
             xbmcgui.Dialog().ok("BGPVR", L(30101))
             return None
-        detail = mask(f"{type(e).__name__}: {e}", username, password)[:300]
+        detail = mask(f"{type(e).__name__}: {e}", username, password, cached_token()[0])[:300]
         log(f"API error ({action}): {detail}", xbmc.LOGERROR)
         xbmcgui.Dialog().ok("BGPVR", f"{L(30102)}\n{detail}")
         return None
@@ -176,13 +179,80 @@ def year_of(*values):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Stream token: play addresses carry it, never the password (owner, 31 Oct 2026).
+# The suite puts it in every direct_source it hands out; the password is used
+# for the player_api sign-in calls only.
+# ---------------------------------------------------------------------------
+
+def _token_key():
+    server_url, username, _ = get_server_config()
+    return TOKEN_PREFIX + hashlib.sha1(f"{server_url}|{username}".encode("utf-8")).hexdigest()
+
+
+def cached_token():
+    """(URL-encoded token, age in seconds) from this Kodi session, or ("", 0)."""
+    stamp, _, tok = xbmcgui.Window(10000).getProperty(_token_key()).partition("|")
+    return (tok, time.time() - float(stamp)) if tok else ("", 0)
+
+
+def remember_token(items):
+    """Keep the token from the first direct_source in an API list; a password there is never kept."""
+    _, _, password = get_server_config()
+    for it in items if isinstance(items, list) else []:
+        m = CRED_RE.search(urlsplit(str(it.get("direct_source") or "")).path) if isinstance(it, dict) else None
+        if m and unquote(m.group(1)) != password:
+            xbmcgui.Window(10000).setProperty(_token_key(), f"{time.time()}|{m.group(1)}")
+            return m.group(1)
+    return ""
+
+
+def fetch_token():
+    """Ask the server (bypassing the cache) for a list that carries the token: a live category, else a film one.
+    "" = none found, None = an API error (already shown)."""
+    for cats_action, list_action in (("get_live_categories", "get_live_streams"),
+                                     ("get_vod_categories", "get_vod_streams")):
+        cats = api_request(cats_action, fresh=True)
+        if cats is None:
+            return None                       # the error was shown already
+        for cat in cats[:3] if isinstance(cats, list) else []:
+            tok = remember_token(api_request(list_action, {"category_id": str(cat.get("category_id", ""))},
+                                             fresh=True))
+            if tok:
+                return tok
+    return ""
+
+
+def token_ok(tok):
+    """False only when the server refuses the token (401/403); any other failure is left to the player."""
+    server_url, username, _ = get_server_config()
+    url = f"{server_url}/player_api.php?" + urlencode(
+        {"username": username, "password": unquote(tok), "action": "get_live_categories"})
+    try:
+        urlopen(Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.1"}), timeout=15, context=SSL_CTX).read()
+    except Exception as e:
+        if getattr(e, "code", None) in (401, 403):
+            log("Stream token refused; fetching a new one")
+            return False
+    xbmcgui.Window(10000).setProperty(_token_key(), f"{time.time()}|{tok}")    # checked: trusted again
+    return True
+
+
 def media_url(kind, item_id, ext):
-    """<server>/<kind>/<user>/<pass>/<id>.<ext> (kind: live | movie | series), or None."""
+    """<server>/<kind>/<user>/<token>/<id>.<ext> (kind: live | movie | series), or None."""
     cfg = require_config()
     if cfg is None:
         return None
-    server_url, username, password = cfg
-    return f"{server_url}/{kind}/{quote(username, safe='')}/{quote(password, safe='')}/{item_id}.{ext}"
+    server_url, username, _ = cfg
+    tok, age = cached_token()
+    if tok and age >= CACHE_TTL and not token_ok(tok):   # a token seen in the last minutes is trusted
+        tok = ""
+    tok = tok or fetch_token()                            # fetched again once
+    if not tok:
+        if tok == "":                                     # None: an API error dialog was shown already
+            xbmcgui.Dialog().ok("BGPVR", L(30103))
+        return None
+    return f"{server_url}/{kind}/{quote(username, safe='')}/{tok}/{item_id}.{ext}"
 
 
 def add_folder(label, params, icon="DefaultFolder.png", art=None, info=None):
@@ -248,6 +318,7 @@ def list_channels(cat_id):
     data   = api_request("get_live_streams", params)
     if data is None:
         return
+    remember_token(data)
 
     for ch in data if isinstance(data, list) else []:
         if cat_id != "all" and str(ch.get("category_id", "")) != cat_id:
@@ -283,6 +354,7 @@ def list_movies(cat_id):
     data = api_request("get_vod_streams", {"category_id": cat_id})
     if data is None:
         return
+    remember_token(data)
 
     for m in data if isinstance(data, list) else []:
         sid = safe_id(m.get("stream_id"))
@@ -368,7 +440,9 @@ def list_episodes(series_id, season):
     title  = show.get("name", "")
     fanart = (show.get("backdrop_path") or [""])[0] if isinstance(show.get("backdrop_path"), list) else ""
 
-    for ep in (data.get("episodes") or {}).get(str(season)) or []:
+    episodes = (data.get("episodes") or {}).get(str(season)) or []
+    remember_token(episodes)
+    for ep in episodes:
         eid = safe_id(ep.get("id"))
         if not eid:                           # no stream to play: leave it out
             continue

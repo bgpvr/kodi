@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addons><addon id="service.bgpvr.setup" name="BGPVR Setup" version="1.0.2" provider-name="BGPVR">
+<addons><addon id="service.bgpvr.setup" name="BGPVR Setup" version="1.0.3" provider-name="BGPVR">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -23,12 +23,14 @@
     </description>
     <platform>all</platform>
     <license>MIT</license>
+    <news>v1.0.3 (31 Oct 2026)
+- IPTV Simple M3U and EPG addresses use the stream token instead of the password; existing installs are moved over at the next Kodi start</news>
     <assets>
       <icon>icon.png</icon>
     </assets>
   </extension>
 
-</addon><addon id="plugin.video.bgpvr" name="BGPVR Live TV" version="1.1.0" provider-name="BGPVR">
+</addon><addon id="plugin.video.bgpvr" name="BGPVR Live TV" version="1.1.1" provider-name="BGPVR">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -55,7 +57,9 @@
     </description>
     <platform>all</platform>
     <license>MIT</license>
-    <news>v1.1.0 (31 Oct 2026)
+    <news>v1.1.1 (31 Oct 2026)
+- Play addresses carry the stream token, never the account password (fetched again once if the server refuses it)
+v1.1.0 (31 Oct 2026)
 - Films and Series: browse by category, seasons and episodes; play in Kodi's player (mkv too); Kodi resume
 - Main menu: Live TV, Films, Series
 - English and Bulgarian strings; API answers cached for 5 minutes; credentials never written to the log</news>

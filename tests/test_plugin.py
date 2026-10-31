@@ -15,6 +15,9 @@ PLUGIN = os.path.join(HERE, "..", "plugin.video.bgpvr", "default.py")
 
 USER, PASS = "tester@example", "p@ss/word 1"          # fake; chosen to need URL encoding
 SERVER = "https://pvr.example.test"
+TOKEN = "tok0aa11bb22"                                  # fake stream token
+ENC_USER = "tester%40example"
+DS = SERVER + "/{kind}/" + ENC_USER + "/@TOKEN@/{id}.{ext}"   # direct_source as the suite builds it
 
 
 class Rec:
@@ -75,12 +78,14 @@ def make_stubs():
 
 FAKE = {
     "get_live_categories": [{"category_id": "1", "category_name": "News"}],
-    "get_live_streams": [{"stream_id": 5, "name": "BNT 1", "stream_icon": "i.png", "category_id": "1"},
+    "get_live_streams": [{"stream_id": 5, "name": "BNT 1", "stream_icon": "i.png", "category_id": "1",
+                          "direct_source": DS.format(kind="live", id=5, ext="m3u8")},
                          {"stream_id": 6, "name": "Other", "category_id": "2"}],
     "get_vod_categories": [{"category_id": "1", "category_name": "Drama"}],
     "get_vod_streams": [
         {"stream_id": 11, "name": "Film A (2019)", "stream_icon": "a.jpg", "rating": "7.5",
-         "container_extension": "mkv", "duration_secs": 6000},
+         "container_extension": "mkv", "duration_secs": 6000,
+         "direct_source": DS.format(kind="movie", id=11, ext="mp4")},
         {"stream_id": 12, "name": "Film B", "container_extension": "../../etc"},
         {"stream_id": "x", "name": "Broken"},
     ],
@@ -92,6 +97,7 @@ FAKE = {
         "seasons": [{"season_number": 1, "name": "Season 1"}, {"season_number": 2, "name": "Season 2"}],
         "episodes": {"1": [
             {"id": "101", "episode_num": "1", "title": "Winter Is Coming", "container_extension": "mp4",
+             "direct_source": DS.format(kind="series", id=101, ext="mp4"),
              "info": {"plot": "p1", "movie_image": "s1.jpg", "duration_secs": 3720, "rating": "8.9"}},
             {"id": "", "episode_num": "2", "title": "No stream"},
         ]},
@@ -105,6 +111,7 @@ class PluginTest(unittest.TestCase):
         R.cfg = (SERVER, USER, PASS)
         R.requests = []
         R.fail = None
+        R.server_token = TOKEN
         make_stubs()
 
     def run_plugin(self, query=""):
@@ -118,7 +125,11 @@ class PluginTest(unittest.TestCase):
             R.requests.append(q)
             if R.fail:
                 raise R.fail
-            return io.BytesIO(json.dumps(FAKE[q["action"][0]]).encode())
+            cred = q["password"][0]
+            if cred != PASS and cred != R.server_token:
+                raise urllib.error.HTTPError("u", 401, "UNAUTHORIZED", {}, None)
+            body = json.dumps(FAKE[q["action"][0]]).replace("@TOKEN@", R.server_token)
+            return io.BytesIO(body.encode())
 
         mod.urlopen = fake_urlopen
         mod.router()
@@ -176,7 +187,7 @@ class PluginTest(unittest.TestCase):
 
     # --- playback URLs -----------------------------------------------------
     def test_play_urls(self):
-        enc = "tester%40example/p%40ss%2Fword%201"
+        enc = f"{ENC_USER}/{TOKEN}"
         cases = [("?mode=play_movie&id=11&ext=mkv", f"{SERVER}/movie/{enc}/11.mkv"),
                  ("?mode=play_movie&id=12&ext=..%2Fx", f"{SERVER}/movie/{enc}/12.mp4"),
                  ("?mode=play_episode&id=101&ext=mp4", f"{SERVER}/series/{enc}/101.mp4"),
@@ -186,6 +197,54 @@ class PluginTest(unittest.TestCase):
             self.run_plugin(query)
             self.assertEqual(R.resolved[0][0], True)
             self.assertEqual(R.resolved[0][1].path, want)
+
+    def test_play_urls_never_hold_password(self):
+        for q in ("?mode=play_movie&id=11&ext=mkv", "?mode=play_episode&id=101&ext=mp4", "?mode=play&stream_id=5"):
+            R.reset()
+            self.run_plugin(q)
+            path = R.resolved[0][1].path
+            self.assertIn(f"/{TOKEN}/", path)
+            for s in (PASS, "p%40ss%2Fword%201", "p%40ss/word%201", "word"):
+                self.assertNotIn(s, path)
+
+    def test_token_from_browsing_is_reused_without_extra_calls(self):
+        self.run_plugin("?mode=movies&cat_id=1")
+        n = len(R.requests)
+        self.run_plugin("?mode=play_movie&id=11&ext=mkv")
+        self.assertEqual(len(R.requests), n)              # fresh token: no fetch, no check
+        self.assertIn(f"/{TOKEN}/", R.resolved[0][1].path)
+
+    def test_stale_token_refused_is_fetched_again_once(self):
+        mod = self.run_plugin("?mode=channels&cat_id=1")
+        key = mod._token_key()
+        R.props[key] = f"{0}|{TOKEN}"                     # remembered long ago
+        R.server_token = "tok9new"                        # password reset on the server: old token refused
+        R.requests.clear()
+        self.run_plugin("?mode=play_movie&id=11&ext=mp4")
+        self.assertEqual(R.resolved[-1][0], True)
+        self.assertIn("/tok9new/", R.resolved[-1][1].path)
+        self.assertEqual(sum(1 for q in R.requests if q["password"] == [TOKEN]), 1)   # one check
+        self.assertTrue(all(q["password"][0] in (PASS, TOKEN) for q in R.requests))    # sign-in calls use the password
+        self.assertEqual(R.dialogs, [])
+
+    def test_old_token_still_valid_is_kept(self):
+        mod = self.run_plugin("?mode=channels&cat_id=1")
+        R.props[mod._token_key()] = f"{0}|{TOKEN}"
+        R.requests.clear()
+        self.run_plugin("?mode=play_episode&id=101&ext=mp4")
+        self.assertEqual([q["password"] for q in R.requests], [[TOKEN]])                # only the check
+        self.assertIn(f"/{TOKEN}/", R.resolved[-1][1].path)
+
+    def test_cold_play_fetches_token(self):
+        self.run_plugin("?mode=play_movie&id=11&ext=mp4")
+        self.assertEqual([q["action"][0] for q in R.requests], ["get_live_categories", "get_live_streams"])
+        self.assertIn(f"/{TOKEN}/", R.resolved[0][1].path)
+
+    def test_server_without_token_refuses_to_play(self):
+        R.server_token = PASS                             # old suite: direct_source carries the password
+        self.run_plugin("?mode=play_movie&id=11&ext=mp4")
+        self.assertEqual(R.resolved[0][0], False)
+        self.assertEqual(R.dialogs, ["S30103"])
 
     def test_play_bad_id_refused(self):
         self.run_plugin("?mode=play_movie&id=1%2F..&ext=mp4")
@@ -199,7 +258,7 @@ class PluginTest(unittest.TestCase):
     # --- masking / errors / cache -------------------------------------------
     def assert_no_secrets(self):
         blob = "\n".join(R.logs + R.dialogs)
-        for s in (USER, PASS, "tester%40example", "p%40ss%2Fword%201", "p%40ss/word%201"):
+        for s in (USER, PASS, "tester%40example", "p%40ss%2Fword%201", "p%40ss/word%201", TOKEN):
             self.assertNotIn(s, blob)
 
     def test_logs_never_hold_credentials(self):

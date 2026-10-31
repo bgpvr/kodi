@@ -40,3 +40,7 @@ msgstr "Входът не успя: проверете потребителск�
 msgctxt "#30102"
 msgid "Could not reach the BGPVR server. Try again in a moment."
 msgstr "Няма връзка със сървъра на BGPVR. Опитайте отново след малко."
+
+msgctxt "#30103"
+msgid "The server did not give this account a stream token, so it cannot play here. Ask your provider to update the BGPVR server."
+msgstr "Сървърът не даде токен за гледане на този акаунт, затова тук не може да се пуска. Помолете доставчика си да обнови сървъра на BGPVR."

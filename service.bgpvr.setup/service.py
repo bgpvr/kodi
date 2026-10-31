@@ -9,6 +9,7 @@
 
 import json
 import os
+import re
 import ssl
 
 import xbmc
@@ -18,10 +19,11 @@ import xbmcvfs
 
 try:
     from urllib.request import Request, urlopen
-    from urllib.parse import urlencode, quote
+    from urllib.parse import urlencode, quote, unquote, urlsplit
 except ImportError:
     from urllib2 import Request, urlopen
-    from urllib import urlencode, quote
+    from urllib import urlencode, quote, unquote
+    from urlparse import urlsplit
 
 ADDON_ID   = "service.bgpvr.setup"
 PVR_ID     = "pvr.iptvsimple"
@@ -29,6 +31,9 @@ SSL_CTX    = ssl._create_unverified_context()
 
 BOOT_SETTLE_MS  = 3000
 AFTER_ENABLE_MS = 4000
+
+# The credential slot of a play address the suite hands out (direct_source): its stream token
+CRED_RE = re.compile(r"/(?:live|movie|series)/[^/]+/([^/]+)/[^/]+$")
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +161,59 @@ def validate_credentials(server_url, username, password):
 
 
 # ---------------------------------------------------------------------------
+# Stream token: the M3U / EPG addresses carry it, never the password (owner, 31 Oct 2026)
+# ---------------------------------------------------------------------------
+
+def _api(server_url, username, password, **params):
+    params.update(username=username, password=password)
+    req = Request(f"{server_url}/player_api.php?{urlencode(params)}", headers={"User-Agent": "Kodi BGPVR/1.0"})
+    return json.loads(urlopen(req, timeout=20, context=SSL_CTX).read().decode("utf-8"))
+
+
+def get_stream_token(server_url, username, password):
+    """The account's stream token (URL-encoded) from a direct_source the server hands out, or "".
+    Looks in up to three live categories, then up to three film categories."""
+    for cats_action, list_action in (("get_live_categories", "get_live_streams"),
+                                     ("get_vod_categories", "get_vod_streams")):
+        try:
+            cats = _api(server_url, username, password, action=cats_action)
+            for cat in cats[:3] if isinstance(cats, list) else []:
+                items = _api(server_url, username, password, action=list_action,
+                             category_id=str(cat.get("category_id", "")))
+                for it in items if isinstance(items, list) else []:
+                    m = CRED_RE.search(urlsplit(str(it.get("direct_source") or "")).path)
+                    if m and unquote(m.group(1)) != password:
+                        return m.group(1)
+        except Exception as e:
+            log(f"get_stream_token ({cats_action}): {type(e).__name__}", xbmc.LOGWARNING)
+    return ""
+
+
+def pvr_settings_hold_password(password):
+    """True when pvr.iptvsimple's settings still carry the password (written by setup 1.0.2 and older)."""
+    needle = f"password={quote(password, safe='')}"
+    return any(needle in vfs_read(f"special://profile/addon_data/{PVR_ID}/{name}")
+               for name in ("instance-settings-1.xml", "settings.xml"))
+
+
+def migrate_to_token():
+    """Rewrite an existing install's M3U / EPG addresses with the stream token instead of the password."""
+    server_url = normalise_url(get_setting("server_url"))
+    username, password = get_setting("username"), get_setting("password")
+    if not (server_url and username and password and pvr_settings_hold_password(password)):
+        return
+    token = get_stream_token(server_url, username, password)
+    if not token:
+        log("Token migration skipped: the server gave no stream token", xbmc.LOGWARNING)
+        return
+    pvr_set_enabled(False)
+    xbmc.sleep(1000)
+    write_pvr_settings(server_url, username, token)
+    pvr_set_enabled(True)
+    log("pvr.iptvsimple now uses the stream token")
+
+
+# ---------------------------------------------------------------------------
 # pvr.iptvsimple management
 # ---------------------------------------------------------------------------
 
@@ -180,18 +238,19 @@ def is_really_configured(server_url):
     return False
 
 
-def write_pvr_settings(server_url, username, password):
-    """Write M3U + EPG URLs into pvr.iptvsimple settings (instance + legacy formats)."""
+def write_pvr_settings(server_url, username, token):
+    """Write M3U + EPG URLs into pvr.iptvsimple settings (instance + legacy formats).
+    token: the URL-encoded stream token (player_api.php and xmltv.php accept it in the password slot)."""
     m3u_url = (
         f"{server_url}/player_api.php"
         f"?username={quote(username, safe='')}"
-        f"&password={quote(password, safe='')}"
+        f"&password={token}"
         f"&type=m3u_plus"
     )
     epg_url = (
         f"{server_url}/xmltv.php"
         f"?username={quote(username, safe='')}"
-        f"&password={quote(password, safe='')}"
+        f"&password={token}"
     )
 
     # Kodi 19+ instance-based format
@@ -368,8 +427,9 @@ def run():
             save_state(state)
         return
 
-    # Already fully configured — nothing to do
+    # Already fully configured — only move a pre-1.0.3 install from the password to the token
     if state.get("configured"):
+        migrate_to_token()
         return
 
     # --- Phase A: first-time setup (or reconfigure after settings change) ---
@@ -437,8 +497,18 @@ def run():
         )
         return
 
+    # ---- Stream token for the M3U / EPG addresses ----
+    token = get_stream_token(server_url, username, password)
+    if not token:
+        dialog.ok(
+            "BGPVR Setup",
+            "The server did not give this account a stream token, so Live TV cannot be set up.\n\n"
+            "Ask your provider to update the BGPVR server.",
+        )
+        return
+
     # ---- Write pvr.iptvsimple settings ----
-    if not write_pvr_settings(server_url, username, password):
+    if not write_pvr_settings(server_url, username, token):
         dialog.ok("BGPVR Setup", "Failed to write settings.\nCheck the Kodi log for details.")
         return
 

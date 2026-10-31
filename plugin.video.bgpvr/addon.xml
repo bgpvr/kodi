@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.bgpvr"
        name="BGPVR Live TV"
-       version="1.1.0"
+       version="1.1.1"
        provider-name="BGPVR">
 
   <requires>
@@ -29,7 +29,9 @@
     </description>
     <platform>all</platform>
     <license>MIT</license>
-    <news>v1.1.0 (31 Oct 2026)
+    <news>v1.1.1 (31 Oct 2026)
+- Play addresses carry the stream token, never the account password (fetched again once if the server refuses it)
+v1.1.0 (31 Oct 2026)
 - Films and Series: browse by category, seasons and episodes; play in Kodi's player (mkv too); Kodi resume
 - Main menu: Live TV, Films, Series
 - English and Bulgarian strings; API answers cached for 5 minutes; credentials never written to the log</news>
