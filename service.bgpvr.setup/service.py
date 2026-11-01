@@ -6,11 +6,16 @@
 # validates credentials, writes pvr.iptvsimple settings, then restarts Kodi.
 #
 # Re-configure flow: change Server URL or username in addon settings → restart Kodi.
+# TV client (1.1.0): "Simple Setup" = pvr.iptvsimple (stream token), "Advanced Setup" = pvr.hts (the suite's HTSP
+# server, port 9982, recordings). Changing the "TV client" setting switches at the next Kodi start: the other client
+# is disabled (never uninstalled) so Kodi does not list the channels twice.
 
 import json
 import os
 import re
+import socket
 import ssl
+from xml.sax.saxutils import escape
 
 import xbmc
 import xbmcaddon
@@ -27,7 +32,13 @@ except ImportError:
 
 ADDON_ID   = "service.bgpvr.setup"
 PVR_ID     = "pvr.iptvsimple"
+HTS_ID     = "pvr.hts"
+HTSP_PORT  = 9982           # the suite's HTSP server (backend/bgpvr/htsp/server.py): plain TCP, no TLS
+# tv_client setting value -> (Kodi add-on, its Debian/Ubuntu package, name in dialogs)
+CLIENTS = {"0": (PVR_ID, "kodi-pvr-iptvsimple", "IPTV Simple Client"),
+           "1": (HTS_ID, "kodi-pvr-hts", "Tvheadend HTSP Client")}
 KODI_CA    = "special://xbmc/system/certs/cacert.pem"   # Kodi's bundled CA list (Android has no usable system one)
+OS_RELEASE = "/etc/os-release"
 
 BOOT_SETTLE_MS  = 3000
 AFTER_ENABLE_MS = 4000
@@ -52,21 +63,22 @@ def _addon():
     return xbmcaddon.Addon(ADDON_ID)
 
 
+def L(string_id):
+    return _addon().getLocalizedString(string_id)
+
+
+# getSetting / setSetting work for every setting type; getSettingString raises on bool / enum settings in Kodi 19+
+# (which left "Allow self-signed certificate" always off in 1.0.4)
 def get_setting(key):
     try:
-        a = _addon()
-        return (a.getSettingString(key) if hasattr(a, "getSettingString") else a.getSetting(key)) or ""
+        return _addon().getSetting(key) or ""
     except Exception:
         return ""
 
 
 def set_setting(key, value):
     try:
-        a = _addon()
-        if hasattr(a, "setSettingString"):
-            a.setSettingString(key, str(value))
-        else:
-            a.setSetting(key, str(value))
+        _addon().setSetting(key, str(value))
     except Exception as e:
         log(f"set_setting {key}: {e}", xbmc.LOGWARNING)
 
@@ -242,23 +254,24 @@ def migrate_to_token():
 # pvr.iptvsimple management
 # ---------------------------------------------------------------------------
 
-def pvr_present():
-    r = jsonrpc("Addons.GetAddonDetails", {"addonid": PVR_ID, "properties": ["enabled"]})
+def pvr_present(pid=PVR_ID):
+    r = jsonrpc("Addons.GetAddonDetails", {"addonid": pid, "properties": ["enabled"]})
     return bool(r.get("result", {}).get("addon"))
 
 
-def pvr_set_enabled(enabled):
-    jsonrpc("Addons.SetAddonEnabled", {"addonid": PVR_ID, "enabled": bool(enabled)})
+def pvr_set_enabled(enabled, pid=PVR_ID):
+    jsonrpc("Addons.SetAddonEnabled", {"addonid": pid, "enabled": bool(enabled)})
 
 
-def is_really_configured(server_url):
-    """True when pvr.iptvsimple's on-disk settings already contain our server URL."""
+def is_really_configured(server_url, pid=PVR_ID, needle=None):
+    """True when the client's on-disk settings already contain our server URL (pvr.hts: <host>needle<)."""
+    needle = (needle or server_url).lower()
     for path in [
-        f"special://profile/addon_data/{PVR_ID}/instance-settings-1.xml",
-        f"special://profile/addon_data/{PVR_ID}/settings.xml",
+        f"special://profile/addon_data/{pid}/instance-settings-1.xml",
+        f"special://profile/addon_data/{pid}/settings.xml",
     ]:
         txt = vfs_read(path)
-        if txt and server_url.lower() in txt.lower():
+        if txt and needle in txt.lower():
             return True
     return False
 
@@ -325,21 +338,143 @@ def write_pvr_settings(server_url, username, token):
 
 
 # ---------------------------------------------------------------------------
-# pvr.iptvsimple install flow
+# pvr.hts (Advanced Setup): the suite's HTSP server checks sha1(password) only (htsp/session.py hello /
+# authenticate), so the stream token cannot be used here: the password goes into pvr.hts's own settings, never a log.
 # ---------------------------------------------------------------------------
 
-def ensure_pvr_installed(install_pending_ref):
-    """Returns True if pvr.iptvsimple is present; False if we need to wait."""
+def htsp_reachable(host):
+    try:
+        socket.create_connection((host, HTSP_PORT), timeout=5).close()
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def htsp_host(server_url, dialog):
+    """The host pvr.hts connects to: the "Tvheadend server address" setting, else the server's host name.
+    A host behind Cloudflare's proxy has no port 9982, so when it does not answer the viewer is asked once."""
+    server_host = urlsplit(server_url).hostname or ""
+    host = get_setting("htsp_host").strip() or server_host
+    if host and htsp_reachable(host):
+        return host
+    entered = (dialog.input(L(30307), defaultt=host, type=xbmcgui.INPUT_ALPHANUM) or "").strip()
+    entered = urlsplit("//" + entered.split("://")[-1]).hostname or ""     # drop a scheme, port or path
+    if entered and htsp_reachable(entered):
+        set_setting("htsp_host", "" if entered == server_host else entered)
+        return entered
+    log(f"HTSP server not reachable on port {HTSP_PORT}", xbmc.LOGWARNING)
+    dialog.ok("BGPVR Setup", L(30308))
+    return ""
+
+
+def write_hts_settings(host, username, password):
+    """pvr.hts settings (instance + legacy formats). HTTP port: the suite serves no Tvheadend web API (channel icons
+    are full URLs, recordings play over HTSP), so pvr.hts's default 9981 stays."""
+    body = (f'  <setting id="host">{escape(host)}</setting>\n'
+            f'  <setting id="http_port">9981</setting>\n'
+            f'  <setting id="https">false</setting>\n'
+            f'  <setting id="htsp_port">{HTSP_PORT}</setting>\n'
+            f'  <setting id="user">{escape(username)}</setting>\n'
+            f'  <setting id="pass">{escape(password)}</setting>\n')
+    head = '<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n<settings version="2">\n'
+    base = f"special://profile/addon_data/{HTS_ID}/"
+    ok1 = vfs_write(base + "instance-settings-1.xml", head
+                    + '  <setting id="kodi_addon_instance_name">BGPVR</setting>\n'
+                    + '  <setting id="kodi_addon_instance_enabled">true</setting>\n' + body + "</settings>\n")
+    ok2 = vfs_write(base + "settings.xml", head + body + "</settings>\n")
+    log(f"Wrote pvr.hts settings: instance={ok1} legacy={ok2}")
+    return ok1 and ok2
+
+
+def configure_client(client, server_url, username, password, dialog):
+    """Write the chosen client's settings (it must be installed). True when written."""
+    if client == "1":
+        host = htsp_host(server_url, dialog)
+        return bool(host) and write_hts_settings(host, username, password)
+    token = get_stream_token(server_url, username, password)
+    if not token:
+        dialog.ok(
+            "BGPVR Setup",
+            "The server did not give this account a stream token, so Live TV cannot be set up.\n\n"
+            "Ask your provider to update the BGPVR server.",
+        )
+        return False
+    if not write_pvr_settings(server_url, username, token):
+        dialog.ok("BGPVR Setup", "Failed to write settings.\nCheck the Kodi log for details.")
+        return False
+    return True
+
+
+def ask_tv_client(dialog):
+    """Asked once at first setup; Back / cancel keeps Simple Setup (recommended)."""
+    advanced = dialog.yesno(L(30303), L(30304), nolabel=L(30301), yeslabel=L(30302))
+    set_setting("tv_client", "1" if advanced else "0")
+
+
+def tv_client():
+    return "1" if get_setting("tv_client") == "1" else "0"
+
+
+def switch_client(state):
+    """The "TV client" setting changed since setup: configure the new client from the stored sign-in, disable the
+    other one, enable the new one (no restart). Not installed yet -> install (or the Linux hint); retried next start."""
+    new = tv_client()
+    server_url = normalise_url(get_setting("server_url"))
+    username, password = get_setting("username"), get_setting("password")
+    if not (server_url and username and password):
+        return
+    pid = CLIENTS[new][0]
+    pending = [state.get("install_pending", False)]
+    if not ensure_pvr_installed(pending, pid):
+        state["install_pending"] = pending[0]
+        save_state(state)
+        return
+    dialog = xbmcgui.Dialog()
+    pvr_set_enabled(False, pid)
+    if not configure_client(new, server_url, username, password, dialog):
+        return
+    pvr_set_enabled(False, CLIENTS["1" if new == "0" else "0"][0])
+    xbmc.sleep(1000)
+    pvr_set_enabled(True, pid)
+    state.update(tv_client=new, install_pending=False)
+    save_state(state)
+    log(f"TV client switched to {pid}")
+
+
+# ---------------------------------------------------------------------------
+# PVR client install flow
+# ---------------------------------------------------------------------------
+
+def linux_needs_apt():
+    """Desktop Linux (Ubuntu / Debian ...): Kodi's binary PVR clients come from OS packages, not Kodi's repository.
+    LibreELEC / CoreELEC ship them in their own repository and Android reports Linux too: both install normally."""
+    if not xbmc.getCondVisibility("System.Platform.Linux") or xbmc.getCondVisibility("System.Platform.Android"):
+        return False
+    try:
+        with open(OS_RELEASE, encoding="utf-8") as fh:
+            return not re.search(r"^ID=\"?(libreelec|coreelec)", fh.read(), re.M | re.I)
+    except OSError:
+        return True
+
+
+def ensure_pvr_installed(install_pending_ref, pid=PVR_ID):
+    """Returns True if the PVR client is present; False if we need to wait."""
     dialog = xbmcgui.Dialog()
 
-    if pvr_present():
+    if pvr_present(pid):
         install_pending_ref[0] = False
         return True
+
+    name = next(c[2] for c in CLIENTS.values() if c[0] == pid)
+    if linux_needs_apt():
+        package = next(c[1] for c in CLIENTS.values() if c[0] == pid)
+        dialog.ok("BGPVR Setup", L(30306).replace("{pkg}", package))
+        return False
 
     if install_pending_ref[0]:
         dialog.notification(
             "BGPVR",
-            "Installing IPTV Simple... (accept any Kodi prompts)",
+            f"Installing {name}... (accept any Kodi prompts)",
             xbmcgui.NOTIFICATION_INFO,
             5000,
         )
@@ -347,14 +482,14 @@ def ensure_pvr_installed(install_pending_ref):
 
     if not dialog.yesno(
         "BGPVR Setup",
-        "IPTV Simple Client is required for Live TV.\n\n"
+        f"{name} is required for Live TV.\n\n"
         "Kodi will download it now.\n"
         "Accept any dependency prompts when asked.\n\n"
         "Continue?",
     ):
         return False
 
-    xbmc.executebuiltin(f"InstallAddon({PVR_ID})")
+    xbmc.executebuiltin(f"InstallAddon({pid})")
     install_pending_ref[0] = True
     dialog.ok(
         "BGPVR Setup",
@@ -432,16 +567,19 @@ def run():
     # Read persisted server URL from addon settings
     stored_server = normalise_url(get_setting("server_url") or "https://pvr.bgpvr.com")
 
-    # If we thought we were done but pvr.iptvsimple no longer matches, reset
-    if state.get("configured") and not is_really_configured(stored_server):
+    # If we thought we were done but the client's settings no longer match, reset (the choice was already asked)
+    configured_pid = CLIENTS[state.get("tv_client", "0")][0]
+    hts_needle = f">{get_setting('htsp_host').strip() or urlsplit(stored_server).hostname}<"
+    if state.get("configured") and not is_really_configured(
+            stored_server, configured_pid, hts_needle if configured_pid == HTS_ID else None):
         log("PVR settings no longer match stored server. Resetting.")
-        state = {}
+        state = {"tv_client_asked": state.get("tv_client_asked", False)}
         save_state(state)
 
     # Phase B: we wrote settings last session, now enable the PVR after reboot
     if state.get("configured") and state.get("needs_enable_reboot"):
-        log("Phase B: enabling pvr.iptvsimple post-reboot")
-        pvr_set_enabled(True)
+        log(f"Phase B: enabling {configured_pid} post-reboot")
+        pvr_set_enabled(True, configured_pid)
         xbmc.sleep(AFTER_ENABLE_MS)
         state["needs_enable_reboot"] = False
         save_state(state)
@@ -452,21 +590,31 @@ def run():
             save_state(state)
         return
 
-    # Already fully configured — only move a pre-1.0.3 install from the password to the token
+    # Already fully configured — switch client if the setting changed, else move a pre-1.0.3 install to the token
     if state.get("configured"):
-        migrate_to_token()
+        if tv_client() != state.get("tv_client", "0"):
+            switch_client(state)
+        elif configured_pid == PVR_ID:
+            migrate_to_token()
         return
 
     # --- Phase A: first-time setup (or reconfigure after settings change) ---
 
+    if not state.get("tv_client_asked"):
+        ask_tv_client(dialog)
+        state["tv_client_asked"] = True
+        save_state(state)
+    client = tv_client()
+    pid = CLIENTS[client][0]
+
     install_pending = [state.get("install_pending", False)]
-    if not ensure_pvr_installed(install_pending):
+    if not ensure_pvr_installed(install_pending, pid):
         state["install_pending"] = install_pending[0]
         save_state(state)
         return
 
     # Disable PVR while we rewrite its settings file
-    pvr_set_enabled(False)
+    pvr_set_enabled(False, pid)
     xbmc.sleep(1000)
 
     # ---- Collect server URL ----
@@ -522,19 +670,8 @@ def run():
         )
         return
 
-    # ---- Stream token for the M3U / EPG addresses ----
-    token = get_stream_token(server_url, username, password)
-    if not token:
-        dialog.ok(
-            "BGPVR Setup",
-            "The server did not give this account a stream token, so Live TV cannot be set up.\n\n"
-            "Ask your provider to update the BGPVR server.",
-        )
-        return
-
-    # ---- Write pvr.iptvsimple settings ----
-    if not write_pvr_settings(server_url, username, token):
-        dialog.ok("BGPVR Setup", "Failed to write settings.\nCheck the Kodi log for details.")
+    # ---- Write the client's settings (Simple: stream token in M3U / EPG; Advanced: pvr.hts host + sign-in) ----
+    if not configure_client(client, server_url, username, password, dialog):
         return
 
     # ---- Persist our own settings ----
@@ -542,11 +679,13 @@ def run():
     set_setting("username",   username)
     set_setting("password",   password)
 
-    # Keep PVR disabled until next boot (settings are now on disk)
-    pvr_set_enabled(False)
+    # Keep PVR disabled until next boot (settings are now on disk); the other client off so channels show once
+    pvr_set_enabled(False, pid)
+    pvr_set_enabled(False, CLIENTS["1" if client == "0" else "0"][0])
     xbmc.sleep(500)
 
     state["configured"]        = True
+    state["tv_client"]         = client
     state["needs_enable_reboot"] = True
     state["open_tv_pending"]   = True
     state["install_pending"]   = False

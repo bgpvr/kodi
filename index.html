@@ -188,14 +188,14 @@
       </div>
       <h1>Automatic Kodi PVR setup for BGPVR</h1>
       <p>
-        This repository provides the official BGPVR Kodi add-ons. BGPVR Setup configures Kodi’s IPTV Simple Client for Live TV and the guide. The BGPVR add-on adds Films and Series, played by Kodi’s own player. Play links use a secure stream token, never your password.
+        This repository provides the official BGPVR Kodi add-ons. BGPVR Setup configures Kodi’s TV client for Live TV and the guide: <b>Simple Setup</b> (IPTV Simple Client) or <b>Advanced Setup</b> (Tvheadend HTSP Client, with recordings). The BGPVR add-on adds Films and Series, played by Kodi’s own player. Play links use a secure stream token, never your password.
       </p>
       <div class="note">
         BGPVR provides software only. This repository does not provide IPTV links, playlists, TV channels, streams, subscriptions, streaming services, or media content.
       </div>
       <div class="status">
-        <span><strong>Setup</strong>Automatic IPTV Simple Client configuration</span>
-        <span><strong>Films &amp; Series</strong>BGPVR add-on 1.1.1</span>
+        <span><strong>Setup</strong>Simple or Advanced, configured automatically</span>
+        <span><strong>Films &amp; Series</strong>BGPVR add-on 1.1.2</span>
         <span><strong>Buffering</strong>Kodi buffering helper add-on</span>
       </div>
     </section>
@@ -210,6 +210,12 @@
           <li><b>Install from repository › BGPVR Add-on Repository</b>:
             <b>Services › BGPVR Setup</b> (Live TV + guide) and <b>Video add-ons › BGPVR Live TV</b> (Films &amp; Series).</li>
           <li>Open <b>BGPVR Setup</b> settings: server <code>https://pvr.bgpvr.com</code>, your username and password › <b>Save &amp; Restart Kodi</b>.</li>
+          <li>At the first start, choose your setup:
+            <b>Simple Setup</b> (recommended): live TV, the guide and catch-up.
+            <b>Advanced Setup</b>: Tvheadend HTSP Client, adds recordings, timers and the recordings list; it uses your password on a connection (port 9982) that is not encrypted.
+            Change it later in <b>BGPVR Setup › Settings › TV client</b>.</li>
+          <li>Linux (Ubuntu, Debian): Kodi’s TV clients come from the system. Install the one you chose once in a terminal:
+            <code>sudo apt install kodi-pvr-iptvsimple</code> (Simple) or <code>sudo apt install kodi-pvr-hts</code> (Advanced), then restart Kodi. LibreELEC, CoreELEC, Android, Windows and macOS install it automatically.</li>
           <li>Live TV: Kodi › <b>TV</b>. Films &amp; Series: <b>Add-ons › Video add-ons › BGPVR Live TV</b>.</li>
         </ol>
       </section>
@@ -219,7 +225,7 @@
         <ul>
           <li><a href="repository.bgpvr-1.0.1.zip">repository.bgpvr-1.0.1.zip</a> (install this first)</li>
           <li><a href="/plugin.video.bgpvr/plugin.video.bgpvr-1.1.2.zip">plugin.video.bgpvr-1.1.2.zip</a></li>
-          <li><a href="/service.bgpvr.setup/service.bgpvr.setup-1.0.4.zip">service.bgpvr.setup-1.0.4.zip</a></li>
+          <li><a href="/service.bgpvr.setup/service.bgpvr.setup-1.1.0.zip">service.bgpvr.setup-1.1.0.zip</a></li>
           <li><a href="/addons.xml">addons.xml</a> · <a href="/addons.xml.md5">addons.xml.md5</a></li>
         </ul>
         <p style="margin-top:10px">Updates arrive automatically once the repository is installed.</p>
@@ -233,6 +239,12 @@
           <li><b>Добавки › Инсталиране от zip файл › BGPVR</b> › <code>repository.bgpvr-1.0.1.zip</code>.</li>
           <li><b>Инсталиране от хранилище › BGPVR Add-on Repository</b>: <b>BGPVR Setup</b> (телевизия и програма) и <b>BGPVR Live TV</b> (филми и сериали).</li>
           <li>В настройките на <b>BGPVR Setup</b>: адрес <code>https://pvr.bgpvr.com</code>, потребителско име и парола › <b>Save &amp; Restart Kodi</b>.</li>
+          <li>При първото стартиране изберете настройка:
+            <b>Лесна настройка</b> (препоръчва се): телевизия на живо, програмата и гледане назад.
+            <b>Разширена настройка</b>: Tvheadend HTSP Client, добавя записи, таймери и списъка със записи; използва паролата ви по връзка (порт 9982), която не е криптирана.
+            Сменя се по-късно в <b>BGPVR Setup › Настройки › ТВ клиент</b>.</li>
+          <li>Linux (Ubuntu, Debian): ТВ клиентите на Kodi идват от системата. Инсталирайте избрания веднъж в терминал:
+            <code>sudo apt install kodi-pvr-iptvsimple</code> (Лесна) или <code>sudo apt install kodi-pvr-hts</code> (Разширена), после рестартирайте Kodi. LibreELEC, CoreELEC, Android, Windows и macOS го инсталират сами.</li>
         </ol>
       </section>
 

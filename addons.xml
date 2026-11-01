@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addons><addon id="service.bgpvr.setup" name="BGPVR Setup" version="1.0.4" provider-name="BGPVR">
+<addons><addon id="service.bgpvr.setup" name="BGPVR Setup" version="1.1.0" provider-name="BGPVR">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -12,18 +12,24 @@
     <summary lang="en">1-Click BGPVR Live TV Setup</summary>
     <summary lang="bg">Автоматична настройка на BGPVR</summary>
     <description lang="en">
-      Automatically configures IPTV Simple Client for your BGPVR server.
+      Automatically configures Kodi's TV client for your BGPVR server: Simple Setup (IPTV Simple Client: live TV,
+      guide, catch-up) or Advanced Setup (Tvheadend HTSP Client: adds recordings, timers and the recordings list).
       Enter your server URL, username and password — Kodi does the rest.
       Live TV, EPG and recordings all set up in one step.
       To reconfigure: change settings and restart Kodi.
     </description>
     <description lang="bg">
-      Автоматично конфигурира IPTV Simple Client за вашия BGPVR сървър.
+      Автоматично конфигурира ТВ клиента на Kodi за вашия BGPVR сървър: Лесна настройка (IPTV Simple Client) или
+      Разширена настройка (Tvheadend HTSP Client, със записи).
       Въведете URL на сървъра, потребителско име и парола — Kodi прави останалото.
     </description>
     <platform>all</platform>
     <license>MIT</license>
-    <news>v1.0.4 (1 Nov 2026)
+    <news>v1.1.0 (1 Nov 2026)
+- Choose the TV client: Simple Setup (IPTV Simple Client: live TV, guide, catch-up) or Advanced Setup (Tvheadend HTSP Client: adds recordings, timers and the recordings list); asked once at first setup, changeable in Settings &gt; TV client; the other client is disabled
+- On desktop Linux the TV clients come from the system: Setup shows the one command to run (sudo apt install kodi-pvr-iptvsimple or kodi-pvr-hts)
+- "Allow self-signed certificate" now takes effect (1.0.4 read it the wrong way on Kodi 19 and newer)
+v1.0.4 (1 Nov 2026)
 - Server certificates are checked; new Advanced setting "Allow self-signed certificate (not recommended)", off by default
 v1.0.3 (31 Oct 2026)
 - IPTV Simple M3U and EPG addresses use the stream token instead of the password; existing installs are moved over at the next Kodi start</news>

@@ -16,3 +16,39 @@ msgstr "Сертификатът за сигурност на сървъра н�
 msgctxt "#30202"
 msgid "Advanced"
 msgstr "Разширени"
+
+msgctxt "#30300"
+msgid "TV client"
+msgstr "ТВ клиент"
+
+msgctxt "#30301"
+msgid "Simple Setup"
+msgstr "Лесна настройка"
+
+msgctxt "#30302"
+msgid "Advanced Setup"
+msgstr "Разширена настройка"
+
+msgctxt "#30303"
+msgid "How should Kodi show BGPVR TV?"
+msgstr "Как Kodi да показва телевизията от BGPVR?"
+
+msgctxt "#30304"
+msgid "Simple Setup (recommended): IPTV Simple Client with live TV, the guide and catch-up.[CR][CR]Advanced Setup: Tvheadend HTSP Client, which adds recordings, timers and the recordings list. It uses your password for the Tvheadend connection, and that connection (port 9982) is not encrypted.[CR][CR]You can change this later in BGPVR Setup > Settings > TV client."
+msgstr "Лесна настройка (препоръчва се): IPTV Simple Client с телевизия на живо, програмата и гледане назад.[CR][CR]Разширена настройка: Tvheadend HTSP Client, който добавя записи, таймери и списъка със записи. Използва паролата ви за връзката с Tvheadend и тази връзка (порт 9982) не е криптирана.[CR][CR]Можете да промените избора по-късно в BGPVR Setup > Настройки > ТВ клиент."
+
+msgctxt "#30306"
+msgid "On Linux, Kodi's TV clients come from the system. Install it once in a terminal:[CR][CR]sudo apt install {pkg}[CR][CR]Then restart Kodi."
+msgstr "В Linux ТВ клиентите на Kodi идват от системата. Инсталирайте го веднъж в терминал:[CR][CR]sudo apt install {pkg}[CR][CR]После рестартирайте Kodi."
+
+msgctxt "#30307"
+msgid "The Tvheadend server did not answer on port 9982. Its address (ask your provider):"
+msgstr "Сървърът Tvheadend не отговори на порт 9982. Адресът му (попитайте доставчика си):"
+
+msgctxt "#30308"
+msgid "Could not reach the Tvheadend server on port 9982. Check its address in BGPVR Setup > Settings, or choose Simple Setup there, then restart Kodi."
+msgstr "Няма връзка със сървъра Tvheadend на порт 9982. Проверете адреса му в BGPVR Setup > Настройки или изберете Лесна настройка там, после рестартирайте Kodi."
+
+msgctxt "#30309"
+msgid "Tvheadend server address (empty = same as Server URL)"
+msgstr "Адрес на сървъра Tvheadend (празно = като URL на сървъра)"
