@@ -303,14 +303,24 @@ class TvClientTest(unittest.TestCase):
         mod, xbmc = load(self.tmp, self.settings, TOKEN)
         mod.reachable = {"media.example.test"}
         xbmc.Dialog.answers["input"] = ["https://media.example.test:443/x"]
-        self.assertEqual(mod.htsp_host(SERVER, xbmc.Dialog()), "media.example.test")
+        self.assertEqual(mod.htsp_host(SERVER, "u", "p", xbmc.Dialog()), ("media.example.test", 9982))
         self.assertEqual(self.settings["htsp_host"], "media.example.test")
-        self.assertEqual(mod.htsp_host(SERVER, xbmc.Dialog()), "media.example.test")   # setting used, no prompt
+        self.assertEqual(mod.htsp_host(SERVER, "u", "p", xbmc.Dialog()), ("media.example.test", 9982))  # setting used
         mod.reachable = set()
         xbmc.Dialog.answers["input"] = ["nowhere.example.test"]
         xbmc.Dialog.shown = []
-        self.assertEqual(mod.htsp_host(SERVER, xbmc.Dialog()), "")
+        self.assertEqual(mod.htsp_host(SERVER, "u", "p", xbmc.Dialog()), ("", 9982))
         self.assertEqual(xbmc.Dialog.shown[-1], ("ok", "BGPVR Setup", "S30308"))
+
+    def test_htsp_host_announced_by_suite(self):
+        mod, xbmc = load(self.tmp, self.settings, TOKEN)
+        mod._api = lambda *a, **k: {"server_info": {"htsp_host": "media.example.test", "htsp_port": 19982}}
+        seen = []
+        mod.htsp_reachable = lambda h, p=9982: seen.append((h, p)) or h == "media.example.test"
+        xbmc.Dialog.shown = []
+        self.assertEqual(mod.htsp_host(SERVER, "u", "p", xbmc.Dialog()), ("media.example.test", 19982))
+        self.assertEqual(seen, [("media.example.test", 19982)])
+        self.assertNotIn("input", [d[0] for d in xbmc.Dialog.shown])     # no prompt when the announced host answers
 
     def platform(self, linux, android, os_release):
         mod, xbmc = load(self.tmp, self.settings, TOKEN)

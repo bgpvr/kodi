@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="service.bgpvr.setup"
        name="BGPVR Setup"
-       version="1.1.0"
+       version="1.1.1"
        provider-name="BGPVR">
 
   <requires>
@@ -28,7 +28,9 @@
     </description>
     <platform>all</platform>
     <license>MIT</license>
-    <news>v1.1.0 (1 Nov 2026)
+    <news>v1.1.1 (1 Nov 2026)
+- Advanced Setup connects to the Tvheadend (HTSP) address and port the BGPVR server announces (suite 2.9.419+), so it works when the web address is behind Cloudflare; a manual address in Settings still wins
+v1.1.0 (1 Nov 2026)
 - Choose the TV client: Simple Setup (IPTV Simple Client: live TV, guide, catch-up) or Advanced Setup (Tvheadend HTSP Client: adds recordings, timers and the recordings list); asked once at first setup, changeable in Settings > TV client; the other client is disabled
 - On desktop Linux the TV clients come from the system: Setup shows the one command to run (sudo apt install kodi-pvr-iptvsimple or kodi-pvr-hts)
 - "Allow self-signed certificate" now takes effect (1.0.4 read it the wrong way on Kodi 19 and newer)

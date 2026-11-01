@@ -342,38 +342,55 @@ def write_pvr_settings(server_url, username, token):
 # authenticate), so the stream token cannot be used here: the password goes into pvr.hts's own settings, never a log.
 # ---------------------------------------------------------------------------
 
-def htsp_reachable(host):
+def htsp_reachable(host, port=HTSP_PORT):
     try:
-        socket.create_connection((host, HTSP_PORT), timeout=5).close()
+        socket.create_connection((host, port), timeout=5).close()
         return True
     except (OSError, ValueError):
         return False
 
 
-def htsp_host(server_url, dialog):
-    """The host pvr.hts connects to: the "Tvheadend server address" setting, else the server's host name.
-    A host behind Cloudflare's proxy has no port 9982, so when it does not answer the viewer is asked once."""
+def announced_htsp(server_url, username, password):
+    """(host, port) the suite announces in the login's server_info (2.9.419+): htsp_host "" means the web host.
+    Older suites announce nothing -> (server host, 9982)."""
     server_host = urlsplit(server_url).hostname or ""
-    host = get_setting("htsp_host").strip() or server_host
-    if host and htsp_reachable(host):
-        return host
+    try:
+        info = _api(server_url, username, password).get("server_info") or {}
+    except Exception:
+        info = {}
+    host = str(info.get("htsp_host") or "").strip() or server_host
+    try:
+        port = int(info.get("htsp_port") or HTSP_PORT)
+    except (TypeError, ValueError):
+        port = HTSP_PORT
+    return host, port if 0 < port < 65536 else HTSP_PORT
+
+
+def htsp_host(server_url, username, password, dialog):
+    """(host, port) pvr.hts connects to: the "Tvheadend server address" setting, else what the suite announces.
+    When that does not answer (e.g. a host behind Cloudflare's proxy) the viewer is asked once. ("", port) = none."""
+    server_host = urlsplit(server_url).hostname or ""
+    announced, port = announced_htsp(server_url, username, password)
+    host = get_setting("htsp_host").strip() or announced
+    if host and htsp_reachable(host, port):
+        return host, port
     entered = (dialog.input(L(30307), defaultt=host, type=xbmcgui.INPUT_ALPHANUM) or "").strip()
     entered = urlsplit("//" + entered.split("://")[-1]).hostname or ""     # drop a scheme, port or path
-    if entered and htsp_reachable(entered):
-        set_setting("htsp_host", "" if entered == server_host else entered)
-        return entered
-    log(f"HTSP server not reachable on port {HTSP_PORT}", xbmc.LOGWARNING)
+    if entered and htsp_reachable(entered, port):
+        set_setting("htsp_host", "" if entered in (server_host, announced) else entered)
+        return entered, port
+    log(f"HTSP server not reachable on port {port}", xbmc.LOGWARNING)
     dialog.ok("BGPVR Setup", L(30308))
-    return ""
+    return "", port
 
 
-def write_hts_settings(host, username, password):
+def write_hts_settings(host, username, password, port=HTSP_PORT):
     """pvr.hts settings (instance + legacy formats). HTTP port: the suite serves no Tvheadend web API (channel icons
     are full URLs, recordings play over HTSP), so pvr.hts's default 9981 stays."""
     body = (f'  <setting id="host">{escape(host)}</setting>\n'
             f'  <setting id="http_port">9981</setting>\n'
             f'  <setting id="https">false</setting>\n'
-            f'  <setting id="htsp_port">{HTSP_PORT}</setting>\n'
+            f'  <setting id="htsp_port">{port}</setting>\n'
             f'  <setting id="user">{escape(username)}</setting>\n'
             f'  <setting id="pass">{escape(password)}</setting>\n')
     head = '<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n<settings version="2">\n'
@@ -389,8 +406,8 @@ def write_hts_settings(host, username, password):
 def configure_client(client, server_url, username, password, dialog):
     """Write the chosen client's settings (it must be installed). True when written."""
     if client == "1":
-        host = htsp_host(server_url, dialog)
-        return bool(host) and write_hts_settings(host, username, password)
+        host, port = htsp_host(server_url, username, password, dialog)
+        return bool(host) and write_hts_settings(host, username, password, port)
     token = get_stream_token(server_url, username, password)
     if not token:
         dialog.ok(
