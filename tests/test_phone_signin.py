@@ -35,7 +35,7 @@ class FakeSuite:
 
     def __init__(self, typed):
         self.typed, self.calls, self.verify, self.code_fail, self.ping = typed, [], [], [], "ok"
-        self.uri, self.ttl, self.codes = ACCOUNT, 600, 0
+        self.uri, self.ttl, self.codes, self.dtok = ACCOUNT, 600, 0, DTOK
 
     def __call__(self, req, timeout=None, context=None):
         path = urlsplit(req.full_url).path
@@ -53,7 +53,7 @@ class FakeSuite:
             got = self.verify.pop(0) if self.verify else "pending"
             if isinstance(got, Exception):
                 raise got
-            return self.answer({"status": "verified", "device_token": DTOK, "username": USER} if got == "verified"
+            return self.answer({"status": "verified", "device_token": self.dtok, "username": USER} if got == "verified"
                                else {"status": "pending"})
         if path == "/api/auth/client/device/signout":
             return self.answer({"ok": True})
@@ -95,7 +95,7 @@ class FakeUI:
         self.closed += 1
 
 
-class PhoneSigninTest(unittest.TestCase):
+class PhoneBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
@@ -126,6 +126,16 @@ class PhoneSigninTest(unittest.TestCase):
         secrets = [DC, DTOK, CRED, PASS, TOKEN] + [f"ABCD-EFG{i}" for i in range(1, 6)] + [f"ABCDEFG{i}" for i in range(1, 6)]
         self.assertFalse([m for m in xbmc.logs if any(s in m for s in secrets)], xbmc.logs)
 
+    def signed_in_box(self):
+        mod, xbmc = self.start()
+        self.suite.verify = ["verified"]
+        self.first_run(mod, xbmc)
+        mod, xbmc = self.start(self.settings)
+        mod.run()                                                                # phase B
+        return self.settings
+
+
+class PhoneSigninTest(PhoneBase):
     # --- the code on screen ---
     def test_code_shown(self):
         mod, xbmc = self.start()
@@ -303,14 +313,6 @@ class PhoneSigninTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "addon_data", "pvr.iptvsimple")))
 
     # --- signed out in My Account ---
-    def signed_in_box(self):
-        mod, xbmc = self.start()
-        self.suite.verify = ["verified"]
-        self.first_run(mod, xbmc)
-        mod, xbmc = self.start(self.settings)
-        mod.run()                                                                # phase B
-        return self.settings
-
     def test_signed_out_box_asks_to_sign_in_again(self):
         settings = self.signed_in_box()
         mod, xbmc = self.start(settings)
@@ -372,6 +374,114 @@ class PhoneSigninTest(unittest.TestCase):
             mod, xbmc = self.start(self.settings)
             mod.run()
         self.assertEqual(self.suite.calls, [])
+
+
+class RunNowTest(PhoneBase):
+    """1.2.0: Add-ons > BGPVR Setup > Run / Settings > Sign in with your phone (setup_now.py -> run_now)."""
+
+    def typed_box(self):
+        mod, xbmc = self.start()
+        self.first_run(mod, xbmc, select=1, inputs=(SERVER, USER, PASS))
+        mod, xbmc = self.start(self.settings)
+        mod.run()                                                                # phase B
+        return dict(self.settings)
+
+    def run_now(self, settings, select, inputs=(), verify=()):
+        mod, xbmc = self.start(settings)
+        self.suite.verify = list(verify)
+        xbmc.Dialog.answers.update(select=[select], input=list(inputs))
+        mod.run_now()
+        return mod, xbmc
+
+    def toggles(self, xbmc):
+        return [c for c in xbmc.rpc if c["method"] == "Addons.SetAddonEnabled"]
+
+    def test_run_offers_the_three_ways(self):
+        mod, xbmc = self.run_now(self.typed_box(), -1)
+        self.assertEqual(xbmc.Dialog.shown[0], ("select", "S30407", ("S30400", "S30401", "S30414")))
+
+    def test_run_switches_a_typed_box_to_the_phone(self):
+        before = self.typed_box()
+        self.assertEqual(before["password"], PASS)
+        mod, xbmc = self.run_now(before, 0, inputs=[SERVER], verify=["verified"])
+        self.assertEqual({k: self.settings.get(k) for k in ("password", "device_token", "tv_client")},
+                         {"password": CRED, "device_token": DTOK, "tv_client": "0"})
+        self.assertIn(f"password={CRED}", self.iptv())
+        self.assertNotIn(TOKEN, self.iptv())
+        st = self.state()
+        self.assertEqual((st["configured"], st["needs_enable_reboot"], st["tv_client"]), (True, True, "0"))
+        self.assertIn("Quit", xbmc.builtins)
+        self.no_secrets_logged(xbmc)
+        mod, xbmc = self.start(self.settings)                                   # the next start enables IPTV Simple
+        mod.run()
+        self.assertEqual([(c["params"]["addonid"], c["params"]["enabled"]) for c in self.toggles(xbmc)],
+                         [("pvr.iptvsimple", True)])
+
+    def test_run_on_a_phone_box_replaces_and_signs_out_the_old_sign_in(self):
+        settings = self.signed_in_box()
+        mod, xbmc = self.start(settings)
+        self.suite.dtok, self.suite.verify = "5a" * 32, ["verified"]
+        xbmc.Dialog.answers.update(select=[0], input=[SERVER])
+        mod.run_now()
+        self.assertIn(("/api/auth/client/device/signout", {"device_token": DTOK}), self.suite.calls)
+        self.assertEqual(self.settings["device_token"], "5a" * 32)
+
+    def test_run_advanced_setup(self):
+        mod, xbmc = self.run_now(self.typed_box(), 2, inputs=[SERVER, USER, PASS])
+        self.assertIn('<setting id="pass">p@ss/word 1</setting>',
+                      Path(self.tmp, "addon_data", "pvr.hts", "instance-settings-1.xml").read_text(encoding="utf-8"))
+        self.assertEqual((self.settings["tv_client"], self.state()["tv_client"]), ("1", "1"))
+        self.assertEqual(self.suite.calls, [])                                   # no phone offered for Advanced
+
+    def unchanged(self, before, iptv_before, xbmc):
+        self.assertEqual(self.settings, before)
+        self.assertEqual(self.iptv(), iptv_before)
+        self.assertEqual(self.toggles(xbmc), [])                                 # the client was never switched off
+        self.assertNotIn("Quit", xbmc.builtins)
+
+    def test_cancel_leaves_the_box_as_it_was(self):
+        for case in ("back on the menu", "back on the code screen", "expired, back", "no code", "empty address",
+                     "typed, back on the address"):
+            before = self.typed_box()
+            iptv_before = self.iptv()
+            mod, xbmc = self.start(before)
+            if case == "back on the code screen":
+                self.ui.cancel_after = 2
+            if case == "expired, back":
+                self.suite.ttl = 30
+            if case == "no code":
+                self.suite.code_fail = [urllib.error.URLError("down")]
+            xbmc.Dialog.answers.update(
+                select=[-1 if case == "back on the menu" else 1 if case.startswith("typed") else 0],
+                input=[] if case in ("empty address", "typed, back on the address") else [SERVER])
+            mod.run_now()
+            self.unchanged(before, iptv_before, xbmc)
+            self.assertNotIn("Username:", [d[1] for d in xbmc.Dialog.shown if d[0] == "input"], case)  # no typed fallback
+            self.no_secrets_logged(xbmc)
+            shutil.rmtree(os.path.join(self.tmp, "addon_data"))
+
+    def test_setup_now_script_runs_run_now(self):
+        import runpy
+        mod, xbmc = self.start()
+        called = []
+        mod.run_now = lambda: called.append(1)
+        sys.modules["service"] = mod
+        self.addCleanup(sys.modules.pop, "service", None)
+        runpy.run_path(os.path.join(HERE, "..", "service.bgpvr.setup", "setup_now.py"), run_name="__main__")
+        self.assertEqual(called, [1])
+
+    def test_run_and_settings_button_are_declared(self):
+        base = Path(HERE, "..", "service.bgpvr.setup")
+        from xml.etree import ElementTree as ET
+        ext = {e.get("point"): e.get("library") for e in ET.parse(base / "addon.xml").getroot().iter("extension")}
+        self.assertEqual((ext.get("xbmc.service"), ext.get("xbmc.python.script")), ("service.py", "setup_now.py"))
+        btn = [e for e in ET.parse(base / "resources" / "settings.xml").getroot().iter("setting") if e.get("id") == "btn_phone"]
+        self.assertEqual([(b.get("type"), b.get("label"), b.get("action")) for b in btn],
+                         [("action", "30402", "RunScript(service.bgpvr.setup)")])
+        for sid in ("30402", "30407", "30414"):
+            bg = (base / "resources" / "language" / "resource.language.bg_bg" / "strings.po").read_text(encoding="utf-8")
+            entry = bg.split(f'"#{sid}"')[1].split("msgctxt")[0]
+            self.assertRegex(entry, r'msgstr "[^"]+"', sid)                      # every Run / button string has BG
 
 
 class ScreenTest(unittest.TestCase):

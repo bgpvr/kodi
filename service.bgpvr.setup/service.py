@@ -756,10 +756,8 @@ def phone_signin(server_url, dialog, monitor):
             ui.close()
 
 
-def phone_setup(default_url, dialog, monitor):
-    """(server_url, username, credential) with IPTV Simple's settings written, or None = the typed flow."""
-    if dialog.select(L(30407), [L(30400), L(30401)]) != 0:
-        return None
+def phone_setup(default_url, dialog, monitor, pid=PVR_ID):
+    """(server_url, username, credential) with IPTV Simple's settings written, or None (nothing changed)."""
     server_url = normalise_url(dialog.input(L(30408), defaultt=default_url, type=xbmcgui.INPUT_ALPHANUM) or "")
     if not server_url:
         return None
@@ -773,11 +771,17 @@ def phone_setup(default_url, dialog, monitor):
         if signed is not None or monitor.abortRequested():
             break
         monitor.waitForAbort(2)
+    if isinstance(signed, tuple):
+        pvr_set_enabled(False, pid)                         # off while its settings file is rewritten
+        xbmc.sleep(1000)
     if not (isinstance(signed, tuple) and write_pvr_settings(server_url, signed[0], quote(signed[1], safe=""))):
         device_signout(server_url, got[0])                  # no half sign-in left in My Account > Devices
         dialog.ok("BGPVR Setup", L(30413))
         return None
     username, cred = signed
+    old = get_setting("device_token")
+    if old and old != got[0]:                               # Run on a phone-signed-in box: the new sign-in replaces it
+        device_signout(normalise_url(get_setting("server_url")), old)
     set_setting("device_token", got[0])
     return server_url, username, cred
 
@@ -787,6 +791,7 @@ def finish_setup(state, client, pid, server_url, username, password, dialog):
     set_setting("server_url", server_url)
     set_setting("username",   username)
     set_setting("password",   password)
+    set_setting("tv_client",  client)
 
     # Keep PVR disabled until next boot (settings are now on disk); the other client off so channels show once
     pvr_set_enabled(False, pid)
@@ -795,6 +800,7 @@ def finish_setup(state, client, pid, server_url, username, password, dialog):
 
     state["configured"]        = True
     state["tv_client"]         = client
+    state["tv_client_asked"]   = True
     state["needs_enable_reboot"] = True
     state["open_tv_pending"]   = True
     state["install_pending"]   = False
@@ -910,20 +916,25 @@ def run():
         save_state(state)
         return
 
-    # Disable PVR while we rewrite its settings file
-    pvr_set_enabled(False, pid)
-    xbmc.sleep(1000)
+    sign_in(state, client, pid, stored_server or "https://pvr.bgpvr.com", dialog, monitor)
 
-    default_url = stored_server or "https://pvr.bgpvr.com"
 
-    # ---- 1.2.0: sign in with the phone (Simple Setup only: HTSP checks the account password) ----
-    if client == "0":
-        signed = phone_setup(default_url, dialog, monitor)
+def sign_in(state, client, pid, default_url, dialog, monitor, way=None, fallback=True):
+    """First run and Run: way None = ask (the phone for Simple Setup only: HTSP checks the account password), "phone",
+    "typed". fallback: a phone sign-in left halfway goes on to the typed one (first run); Run leaves the box as it was."""
+    if way is None:
+        way = "phone" if client == "0" and dialog.select(L(30407), [L(30400), L(30401)]) == 0 else "typed"
+    if way == "phone":
+        signed = phone_setup(default_url, dialog, monitor, pid)
         if signed:
             return finish_setup(state, client, pid, *signed, dialog)
-        if monitor.abortRequested():          # Kodi is closing: no typed dialogs on the way out
+        if not fallback or monitor.abortRequested():          # Kodi is closing: no typed dialogs on the way out
             return
+    typed_setup(state, client, pid, default_url, dialog)
 
+
+def typed_setup(state, client, pid, default_url, dialog):
+    """The typed sign-in (server URL, username, password), as in 1.1.1. Nothing changes before it is checked."""
     # ---- Collect server URL ----
     dialog.ok(
         "BGPVR Setup",
@@ -977,6 +988,8 @@ def run():
         return
 
     # ---- Write the client's settings (Simple: stream token in M3U / EPG; Advanced: pvr.hts host + sign-in) ----
+    pvr_set_enabled(False, pid)              # off while its settings file is rewritten (1.2.0: only after the sign-in
+    xbmc.sleep(1000)                         # was checked, so a cancelled Run leaves a working box as it was)
     if not configure_client(client, server_url, username, password, dialog):
         return
 
@@ -984,6 +997,24 @@ def run():
     set_setting("device_token", "")
     finish_setup(state, client, pid, server_url, username, password, dialog)
 
+
+
+def run_now():
+    """1.2.0: Add-ons > BGPVR Setup > Run, and Settings > "Sign in with your phone": sign in now, also on a box that is
+    set up already. The current sign-in stays until the new one succeeds (Back / cancel = nothing changes)."""
+    monitor, dialog, state = xbmc.Monitor(), xbmcgui.Dialog(), load_state()
+    pick = dialog.select(L(30407), [L(30400), L(30401), L(30414)])
+    if pick < 0:
+        return
+    client = "0" if pick == 0 else "1" if pick == 2 else tv_client()
+    pid = CLIENTS[client][0]
+    pending = [state.get("install_pending", False)]
+    if not ensure_pvr_installed(pending, pid):
+        state["install_pending"] = pending[0]
+        save_state(state)
+        return
+    sign_in(state, client, pid, normalise_url(get_setting("server_url") or "https://pvr.bgpvr.com"), dialog, monitor,
+            way="phone" if pick == 0 else "typed", fallback=False)
 
 if __name__ == "__main__":
     try:

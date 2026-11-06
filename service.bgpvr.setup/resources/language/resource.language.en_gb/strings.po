@@ -104,3 +104,7 @@ msgstr ""
 msgctxt "#30413"
 msgid "Approved, but Kodi could not finish signing in. Check the network and try again, or sign in another way."
 msgstr ""
+
+msgctxt "#30414"
+msgid "Advanced Setup (recordings): sign in with username and password"
+msgstr ""

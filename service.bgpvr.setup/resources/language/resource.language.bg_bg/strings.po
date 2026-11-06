@@ -104,3 +104,7 @@ msgstr "Тази кутия вече не е влязла във вашия ак
 msgctxt "#30413"
 msgid "Approved, but Kodi could not finish signing in. Check the network and try again, or sign in another way."
 msgstr "Одобрено, но Kodi не успя да завърши входа. Проверете мрежата и опитайте пак или влезте по друг начин."
+
+msgctxt "#30414"
+msgid "Advanced Setup (recordings): sign in with username and password"
+msgstr "Разширена настройка (записи): вход с потребителско име и парола"

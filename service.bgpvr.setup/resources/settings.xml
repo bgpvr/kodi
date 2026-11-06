@@ -8,6 +8,7 @@
     <setting id="tv_client"  type="enum" label="30300" lvalues="30301|30302" default="0"/>
     <setting id="htsp_host"  type="text" label="30309" default="" visible="eq(-1,1)"/>
     <setting id="btn_restart" type="action" label="Save &amp; Restart Kodi" action="RestartApp"/>
+    <setting id="btn_phone"   type="action" label="30402" action="RunScript(service.bgpvr.setup)" option="close"/>
   </category>
   <category label="30202">
     <setting id="allow_self_signed" type="bool" label="30200" default="false"/>
