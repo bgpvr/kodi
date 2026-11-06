@@ -9,12 +9,17 @@
 # TV client (1.1.0): "Simple Setup" = pvr.iptvsimple (stream token), "Advanced Setup" = pvr.hts (the suite's HTSP
 # server, port 9982, recordings). Changing the "TV client" setting switches at the next Kodi start: the other client
 # is disabled (never uninstalled) so Kodi does not list the channels twice.
+# 1.2.0 (D284): "Sign in with your phone" for Simple Setup: the suite's TV code (/api/auth/client/device/*, as the BGPVR
+# TV apps), a QR + ABCD-EFGH on screen, approved in My Account; the box gets a device sign-in of its own (revocable in
+# Devices), never the account password. "Sign in another way" = the typed flow, unchanged.
 
 import json
 import os
 import re
 import socket
 import ssl
+import sys
+import time
 from xml.sax.saxutils import escape
 
 import xbmc
@@ -29,6 +34,9 @@ except ImportError:
     from urllib2 import Request, urlopen
     from urllib import urlencode, quote, unquote
     from urlparse import urlsplit
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "lib"))
+import bgpvr_qr  # noqa: E402
 
 ADDON_ID   = "service.bgpvr.setup"
 PVR_ID     = "pvr.iptvsimple"
@@ -548,6 +556,262 @@ def save_state(state):
 
 
 # ---------------------------------------------------------------------------
+# 1.2.0 (D284): sign in with the phone. Every answer from the server is checked before use; the user code, the device
+# code, the device token and the credential never reach the log.
+# ---------------------------------------------------------------------------
+
+POLL_S = 5                                  # as the web TV and the TV apps
+UA = "Kodi BGPVR Setup/1.2.0"
+USER_CODE_RE = re.compile(r"^[A-Z0-9]{4}-[A-Z0-9]{4}$")
+DEVICE_CRED_RE = re.compile(r"^dv[0-9a-f]{40}$")              # the suite's per-device stream credential (principal.py)
+ADDRESS_RE = re.compile(r"^https?://[^\s\"'<>\[\]?#]+$")       # no Kodi label tags, no query of its own
+now = time.time                                                 # tests move the clock
+
+
+def _post(server_url, path, body):
+    req = Request(server_url + path, data=json.dumps(body).encode("utf-8"),
+                  headers={"User-Agent": UA, "Content-Type": "application/json"})
+    data = json.loads(urlopen(req, timeout=15, context=ssl_context()).read().decode("utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def device_name():
+    """What My Account > Devices calls this box: Kodi's own name ("Kodi (LIBREELEC)" by default)."""
+    name = re.sub(r"[\x00-\x1f\x7f]", " ", xbmc.getInfoLabel("System.FriendlyName") or "").strip()
+    return (name if "kodi" in name.lower() else f"Kodi ({name})" if name else "Kodi")[:128]
+
+
+def new_code(server_url):
+    """{code, device_code, url: the QR text, address, ttl} from the suite, or an exception."""
+    d = _post(server_url, "/api/auth/client/device/code",
+              {"want": "device_token", "device_name": device_name(), "platform": "kodi"})
+    code, device_code = str(d.get("user_code") or ""), d.get("device_code")
+    if not USER_CODE_RE.match(code) or not isinstance(device_code, str) or not 0 < len(device_code) <= 128:
+        raise ValueError("unexpected code answer")
+    base = str(d.get("verification_uri") or "")
+    base = base if ADDRESS_RE.match(base) else server_url + "/account"
+    try:
+        ttl = max(30, min(int(d.get("expires_in") or 600), 1800))
+    except (TypeError, ValueError):
+        ttl = 600
+    return {"code": code, "device_code": device_code, "url": f"{base}?tvcode={code}",
+            "address": base.split("://", 1)[1], "ttl": ttl}
+
+
+def poll(server_url, device_code):
+    """"pending", "expired" (or used), (device_token, username) once approved, or None (no answer: ask again)."""
+    try:
+        d = _post(server_url, "/api/auth/client/device/verify", {"device_code": device_code})
+    except Exception as e:
+        if getattr(e, "code", None) == 400:
+            return "expired"
+        log(f"Code sign-in: no answer ({type(e).__name__})", xbmc.LOGWARNING)
+        return None
+    if d.get("status") != "verified":
+        return "pending"
+    token, username = d.get("device_token"), d.get("username")
+    ok = isinstance(token, str) and 0 < len(token) <= 128 and isinstance(username, str) and username
+    return (token, username) if ok else "expired"
+
+
+def device_credential(server_url, device_token):
+    """(username, the device's stream credential), "revoked" (signed out in My Account), or None (no answer)."""
+    try:
+        d = _post(server_url, "/api/auth/client/device/ping", {"device_token": device_token, "want": "stream_credential"})
+    except Exception as e:
+        if getattr(e, "code", None) == 401:
+            return "revoked"
+        log(f"Device check: no answer ({type(e).__name__})", xbmc.LOGWARNING)
+        return None
+    username, cred = str(d.get("username") or ""), str(d.get("password") or "")
+    return (username, cred) if d.get("valid") and username and DEVICE_CRED_RE.match(cred) else None
+
+
+def device_signout(server_url, device_token):
+    """Best effort: end this box's sign-in on the server too (Devices list, its credential). Idempotent there."""
+    if not (server_url and device_token):
+        return
+    try:
+        _post(server_url, "/api/auth/client/device/signout", {"device_token": device_token})
+    except Exception as e:
+        log(f"Device sign-out: no answer ({type(e).__name__})", xbmc.LOGWARNING)
+
+
+def qr_png(text):
+    m = bgpvr_qr.encode(text)
+    return bgpvr_qr.png(m) if m else b""
+
+
+def make_ui(monitor):
+    """The sign-in screen, drawn with Kodi's own controls (1280 x 720 layout, Estuary fonts)."""
+    class CodeScreen(xbmcgui.WindowDialog):
+        def __init__(self):
+            self.cancelled = self.again = self.is_expired = False
+            self.files = []
+            self.addControl(xbmcgui.ControlImage(0, 0, 1280, 720, self._file(bgpvr_qr.png([[True]], 1, 0)),
+                                                 colorDiffuse="F2000000"))
+            self.qr = xbmcgui.ControlImage(90, 140, 440, 440, "", aspectRatio=1)
+            self.title = xbmcgui.ControlLabel(590, 130, 640, 50, L(30402), font="font30_title")
+            self.how = xbmcgui.ControlTextBox(590, 200, 640, 120, font="font13")
+            self.code = xbmcgui.ControlLabel(590, 330, 640, 80, "", font="font45")
+            self.left = xbmcgui.ControlLabel(590, 420, 640, 40, "", font="font13")
+            self.button = xbmcgui.ControlButton(590, 500, 440, 70, L(30401))
+            for c in (self.qr, self.title, self.how, self.code, self.left, self.button):
+                self.addControl(c)
+
+        def _file(self, data):
+            path = os.path.join(xbmcvfs.translatePath("special://temp/"), f"bgpvr-signin-{os.urandom(6).hex()}.png")
+            with open(path, "wb") as fh:
+                fh.write(data)
+            self.files.append(path)
+            return path
+
+        def present(self, png, code, address):
+            self.cancelled = self.again = self.is_expired = False
+            self.qr.setImage(self._file(png) if png else "", False)
+            self.qr.setColorDiffuse("FFFFFFFF")
+            self.how.setText(L(30403).replace("{address}", address))
+            self.code.setLabel(code)
+            self.button.setLabel(L(30401))
+            self.show()
+            self.setFocus(self.button)
+
+        def tick(self, seconds):
+            self.left.setLabel(L(30404).replace("{time}", f"{seconds // 60}:{seconds % 60:02d}"))
+
+        def expired(self):
+            """The code ran out: True = the viewer asked for a new one, False = another way."""
+            self.is_expired = True
+            self.qr.setColorDiffuse("30FFFFFF")
+            self.left.setLabel(L(30405))
+            self.button.setLabel(L(30406))
+            self.setFocus(self.button)
+            while not (self.again or self.cancelled or monitor.abortRequested()):
+                monitor.waitForAbort(0.2)
+            return self.again
+
+        def onAction(self, action):
+            if action.getId() in (10, 92):          # ACTION_PREVIOUS_MENU, ACTION_NAV_BACK
+                self.cancelled = True
+
+        def onControl(self, control):
+            if control.getId() == self.button.getId():
+                self.again, self.cancelled = self.is_expired, not self.is_expired
+
+        def close(self):
+            for path in self.files:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            self.files = []
+            super().close()
+    return CodeScreen()
+
+
+def wait_for_approval(server_url, c, ui, monitor):
+    """(device_token, username), "again" (a new code), or None (another way)."""
+    end, next_poll = now() + c["ttl"], now() + POLL_S
+    while not (ui.cancelled or monitor.abortRequested()):
+        left = int(end - now())
+        if left <= 0:
+            break
+        ui.tick(left)
+        if now() >= next_poll:
+            got, next_poll = poll(server_url, c["device_code"]), now() + POLL_S
+            if got == "expired":
+                break
+            if isinstance(got, tuple):
+                log("Code sign-in approved")
+                return got
+        monitor.waitForAbort(1)
+    if ui.cancelled or monitor.abortRequested():
+        return None
+    log("Code sign-in: the code expired")
+    return "again" if ui.expired() else None
+
+
+def phone_signin(server_url, dialog, monitor):
+    """Show codes until the viewer approves one on the phone: (device_token, username), or None = sign in another way."""
+    ui = None
+    try:
+        while True:
+            try:
+                c = new_code(server_url)
+            except Exception as e:
+                log(f"Code sign-in: no code ({type(e).__name__})", xbmc.LOGWARNING)
+                if ui:
+                    ui.close()
+                    ui = None
+                dialog.ok("BGPVR Setup", L(30410) if getattr(e, "code", None) == 429 else
+                          L(30201) if cert_failed(e) else L(30411))
+                return None
+            ui = ui or make_ui(monitor)
+            ui.present(qr_png(c["url"]), c["code"], c["address"])
+            got = wait_for_approval(server_url, c, ui, monitor)
+            if got != "again":
+                return got
+    finally:
+        if ui:
+            ui.close()
+
+
+def phone_setup(default_url, dialog, monitor):
+    """(server_url, username, credential) with IPTV Simple's settings written, or None = the typed flow."""
+    if dialog.select(L(30407), [L(30400), L(30401)]) != 0:
+        return None
+    server_url = normalise_url(dialog.input(L(30408), defaultt=default_url, type=xbmcgui.INPUT_ALPHANUM) or "")
+    if not server_url:
+        return None
+    log(f"Code sign-in started at {server_url}")
+    got = phone_signin(server_url, dialog, monitor)
+    if not got:
+        return None
+    signed = None
+    for attempt in range(3):          # verify answers once: an approval is never dropped for one lost answer
+        signed = device_credential(server_url, got[0])
+        if signed is not None or monitor.abortRequested():
+            break
+        monitor.waitForAbort(2)
+    if not (isinstance(signed, tuple) and write_pvr_settings(server_url, signed[0], quote(signed[1], safe=""))):
+        device_signout(server_url, got[0])                  # no half sign-in left in My Account > Devices
+        dialog.ok("BGPVR Setup", L(30413))
+        return None
+    username, cred = signed
+    set_setting("device_token", got[0])
+    return server_url, username, cred
+
+
+def finish_setup(state, client, pid, server_url, username, password, dialog):
+    """Both sign-ins end here: keep the sign-in, PVR on at the next start, restart Kodi."""
+    set_setting("server_url", server_url)
+    set_setting("username",   username)
+    set_setting("password",   password)
+
+    # Keep PVR disabled until next boot (settings are now on disk); the other client off so channels show once
+    pvr_set_enabled(False, pid)
+    pvr_set_enabled(False, CLIENTS["1" if client == "0" else "0"][0])
+    xbmc.sleep(500)
+
+    state["configured"]        = True
+    state["tv_client"]         = client
+    state["needs_enable_reboot"] = True
+    state["open_tv_pending"]   = True
+    state["install_pending"]   = False
+    save_state(state)
+
+    dialog.ok(
+        "BGPVR Setup — Done!",
+        f"Connected to:  {server_url}\n"
+        f"User:          {username}\n\n"
+        "Kodi will now restart to activate Live TV and EPG.\n\n"
+        "[COLOR gray]To use a different server later: change the URL in\n"
+        "Add-ons → BGPVR Setup → Settings, then restart Kodi.[/COLOR]",
+    )
+    xbmc.executebuiltin("Quit")
+
+
+# ---------------------------------------------------------------------------
 # Misc
 # ---------------------------------------------------------------------------
 
@@ -607,6 +871,22 @@ def run():
             save_state(state)
         return
 
+    # 1.2.0: a box signed in with the phone: still signed in? (My Account > Devices can sign it out.) Advanced Setup
+    # needs the account password (HTSP), so a switch to it signs in again the typed way. No answer = no change.
+    if state.get("configured") and get_setting("device_token"):
+        advanced = tv_client() == "1"
+        if not advanced and device_credential(stored_server, get_setting("device_token")) != "revoked":
+            return            # also skips migrate_to_token / switch_client: the dv credential is no password to migrate
+        log("Device sign-in ended (" + ("Advanced Setup chosen" if advanced else "signed out from the account") + ")")
+        if advanced:
+            device_signout(stored_server, get_setting("device_token"))
+        else:
+            dialog.ok("BGPVR Setup", L(30412))
+        set_setting("device_token", "")
+        set_setting("password", "")
+        state = {"tv_client_asked": True}
+        save_state(state)
+
     # Already fully configured — switch client if the setting changed, else move a pre-1.0.3 install to the token
     if state.get("configured"):
         if tv_client() != state.get("tv_client", "0"):
@@ -634,8 +914,17 @@ def run():
     pvr_set_enabled(False, pid)
     xbmc.sleep(1000)
 
-    # ---- Collect server URL ----
     default_url = stored_server or "https://pvr.bgpvr.com"
+
+    # ---- 1.2.0: sign in with the phone (Simple Setup only: HTSP checks the account password) ----
+    if client == "0":
+        signed = phone_setup(default_url, dialog, monitor)
+        if signed:
+            return finish_setup(state, client, pid, *signed, dialog)
+        if monitor.abortRequested():          # Kodi is closing: no typed dialogs on the way out
+            return
+
+    # ---- Collect server URL ----
     dialog.ok(
         "BGPVR Setup",
         "Welcome! Enter your BGPVR server details to set up Live TV and EPG.\n\n"
@@ -691,32 +980,9 @@ def run():
     if not configure_client(client, server_url, username, password, dialog):
         return
 
-    # ---- Persist our own settings ----
-    set_setting("server_url", server_url)
-    set_setting("username",   username)
-    set_setting("password",   password)
-
-    # Keep PVR disabled until next boot (settings are now on disk); the other client off so channels show once
-    pvr_set_enabled(False, pid)
-    pvr_set_enabled(False, CLIENTS["1" if client == "0" else "0"][0])
-    xbmc.sleep(500)
-
-    state["configured"]        = True
-    state["tv_client"]         = client
-    state["needs_enable_reboot"] = True
-    state["open_tv_pending"]   = True
-    state["install_pending"]   = False
-    save_state(state)
-
-    dialog.ok(
-        "BGPVR Setup — Done!",
-        f"Connected to:  {server_url}\n"
-        f"User:          {username}\n\n"
-        "Kodi will now restart to activate Live TV and EPG.\n\n"
-        "[COLOR gray]To use a different server later: change the URL in\n"
-        "Add-ons → BGPVR Setup → Settings, then restart Kodi.[/COLOR]",
-    )
-    xbmc.executebuiltin("Quit")
+    device_signout(normalise_url(get_setting("server_url")), get_setting("device_token"))   # a typed sign-in replaces a phone one
+    set_setting("device_token", "")
+    finish_setup(state, client, pid, server_url, username, password, dialog)
 
 
 if __name__ == "__main__":

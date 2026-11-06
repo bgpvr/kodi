@@ -32,6 +32,9 @@ CACHE_PREFIX   = "bgpvr.cache."
 TOKEN_PREFIX   = "bgpvr.token."
 # The credential slot of a play address the suite hands out (direct_source): its stream token
 CRED_RE        = re.compile(r"/(?:live|movie|series)/[^/]+/([^/]+)/[^/]+$")
+# setup 1.2.0 (D284): a box signed in with the phone keeps the device's own stream credential as its "password";
+# stream-only by design, so it is the play token too
+DEVICE_CRED_RE = re.compile(r"^dv[0-9a-f]{40}$")
 
 
 def L(string_id):
@@ -147,7 +150,7 @@ def api_request(action, extra_params=None, fresh=False):
     url = f"{server_url}/player_api.php?{urlencode(params)}"
     log(f"API: {server_url}/player_api.php action={action} {extra_params or ''}")
     try:
-        req  = Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.2"})
+        req  = Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.3"})
         resp = urlopen(req, timeout=15, context=ssl_context())
         body = resp.read().decode("utf-8")
         data = json.loads(body)
@@ -238,7 +241,7 @@ def remember_token(items):
     _, _, password = get_server_config()
     for it in items if isinstance(items, list) else []:
         m = CRED_RE.search(urlsplit(str(it.get("direct_source") or "")).path) if isinstance(it, dict) else None
-        if m and unquote(m.group(1)) != password:
+        if m and (unquote(m.group(1)) != password or DEVICE_CRED_RE.match(password)):
             xbmcgui.Window(10000).setProperty(_token_key(), f"{time.time()}|{m.group(1)}")
             return m.group(1)
     return ""
@@ -266,7 +269,7 @@ def token_ok(tok):
     url = f"{server_url}/player_api.php?" + urlencode(
         {"username": username, "password": unquote(tok), "action": "get_live_categories"})
     try:
-        urlopen(Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.2"}), timeout=15, context=ssl_context()).read()
+        urlopen(Request(url, headers={"User-Agent": "Kodi BGPVR/1.1.3"}), timeout=15, context=ssl_context()).read()
     except Exception as e:
         if getattr(e, "code", None) in (401, 403):
             log("Stream token refused; fetching a new one")

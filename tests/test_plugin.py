@@ -252,6 +252,16 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(R.resolved[0][0], False)
         self.assertEqual(R.dialogs, ["S30103"])
 
+    def test_phone_signed_in_box_plays_with_its_device_credential(self):
+        # setup 1.2.0 (D284): the stored "password" is the device's own stream credential, which the suite also puts
+        # in every direct_source: it is the play token
+        cred = "dv" + "ab12" * 10
+        R.cfg, R.server_token = (SERVER, USER, cred), cred
+        self.run_plugin("?mode=play_movie&id=11&ext=mp4")
+        self.assertEqual(R.resolved[0][0], True)
+        self.assertEqual(R.resolved[0][1].path, f"{SERVER}/movie/{ENC_USER}/{cred}/11.mp4")
+        self.assertEqual(R.dialogs, [])
+
     def test_play_bad_id_refused(self):
         self.run_plugin("?mode=play_movie&id=1%2F..&ext=mp4")
         self.assertEqual(R.resolved[0][0], False)

@@ -52,3 +52,55 @@ msgstr ""
 msgctxt "#30309"
 msgid "Tvheadend server address (empty = same as Server URL)"
 msgstr ""
+
+msgctxt "#30400"
+msgid "Sign in with your phone (recommended)"
+msgstr ""
+
+msgctxt "#30401"
+msgid "Sign in another way"
+msgstr ""
+
+msgctxt "#30402"
+msgid "Sign in with your phone"
+msgstr ""
+
+msgctxt "#30403"
+msgid "Scan the code with your phone camera, or open {address} on your phone or computer and enter this code. Then approve this box in My Account."
+msgstr ""
+
+msgctxt "#30404"
+msgid "The code works for {time} more"
+msgstr ""
+
+msgctxt "#30405"
+msgid "This code has expired."
+msgstr ""
+
+msgctxt "#30406"
+msgid "Get a new code"
+msgstr ""
+
+msgctxt "#30407"
+msgid "How do you want to sign in?"
+msgstr ""
+
+msgctxt "#30408"
+msgid "Server address (for example https://pvr.bgpvr.com):"
+msgstr ""
+
+msgctxt "#30410"
+msgid "Too many sign-in codes were asked from this network. Wait a few minutes and try again, or sign in another way."
+msgstr ""
+
+msgctxt "#30411"
+msgid "Could not get a sign-in code from this server. Check the address and the network, or sign in another way with your username and password."
+msgstr ""
+
+msgctxt "#30412"
+msgid "This box is no longer signed in to your account (it was signed out in My Account, or the account is not active). Sign in again to watch."
+msgstr ""
+
+msgctxt "#30413"
+msgid "Approved, but Kodi could not finish signing in. Check the network and try again, or sign in another way."
+msgstr ""

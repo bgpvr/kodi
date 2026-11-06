@@ -41,8 +41,14 @@ def load(tmp, settings, server_token):
         return "{}"
     xbmc.executeJSONRPC = rpc
 
+    xbmc.clock = [1000.0]                          # 1.2.0: the sign-in screen's clock (mod.now) moves only here
+    xbmc.getInfoLabel = lambda k: "TESTBOX" if k == "System.FriendlyName" else ""
+
     class Monitor:
         def abortRequested(self): return False
+        def waitForAbort(self, s=0):
+            xbmc.clock[0] += s
+            return False
     xbmc.Monitor = Monitor
 
     class File:
@@ -73,7 +79,7 @@ def load(tmp, settings, server_token):
     xbmcgui.INPUT_ALPHANUM, xbmcgui.ALPHANUM_HIDE_INPUT, xbmcgui.NOTIFICATION_INFO = 0, 2, "info"
 
     class Dialog:
-        answers = {"yesno": [], "input": []}
+        answers = {"yesno": [], "input": [], "select": []}
         shown = []
         def yesno(self, heading, message, nolabel="", yeslabel=""):
             Dialog.shown.append(("yesno", heading, message, nolabel, yeslabel))
@@ -82,6 +88,9 @@ def load(tmp, settings, server_token):
             Dialog.shown.append(("input", heading, defaultt))
             return Dialog.answers["input"].pop(0) if Dialog.answers["input"] else ""
         def ok(self, heading, message): Dialog.shown.append(("ok", heading, message))
+        def select(self, heading, items):        # 1.2.0; nothing queued = Back (-1)
+            Dialog.shown.append(("select", heading, tuple(items)))
+            return Dialog.answers["select"].pop(0) if Dialog.answers.get("select") else -1
         def notification(self, *a): Dialog.shown.append(("notification",) + a)
     xbmcgui.Dialog = Dialog
     sys.modules.update(xbmc=xbmc, xbmcvfs=xbmcvfs, xbmcaddon=xbmcaddon, xbmcgui=xbmcgui)
@@ -89,6 +98,7 @@ def load(tmp, settings, server_token):
     spec = importlib.util.spec_from_file_location("bgpvr_setup", SERVICE)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    mod.now = lambda: xbmc.clock[0]
 
     def fake_urlopen(req, timeout=None, context=None):
         q = parse_qs(urlsplit(req.full_url).query)

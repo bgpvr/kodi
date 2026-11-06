@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addons><addon id="service.bgpvr.setup" name="BGPVR Setup" version="1.1.1" provider-name="BGPVR">
+<addons><addon id="service.bgpvr.setup" name="BGPVR Setup" version="1.2.0" provider-name="BGPVR">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -14,18 +14,25 @@
     <description lang="en">
       Automatically configures Kodi's TV client for your BGPVR server: Simple Setup (IPTV Simple Client: live TV,
       guide, catch-up) or Advanced Setup (Tvheadend HTSP Client: adds recordings, timers and the recordings list).
-      Enter your server URL, username and password — Kodi does the rest.
+      Sign in with your phone (scan the QR code Kodi shows and approve the box), or enter your server URL,
+      username and password — Kodi does the rest.
       Live TV, EPG and recordings all set up in one step.
       To reconfigure: change settings and restart Kodi.
     </description>
     <description lang="bg">
       Автоматично конфигурира ТВ клиента на Kodi за вашия BGPVR сървър: Лесна настройка (IPTV Simple Client) или
       Разширена настройка (Tvheadend HTSP Client, със записи).
-      Въведете URL на сървъра, потребителско име и парола — Kodi прави останалото.
+      Влезте с телефона (сканирайте QR кода и одобрете кутията) или въведете URL на сървъра, потребителско име
+      и парола — Kodi прави останалото.
     </description>
     <platform>all</platform>
     <license>MIT</license>
-    <news>v1.1.1 (1 Nov 2026)
+    <news>v1.2.0 (6 Nov 2026)
+- Sign in with your phone: Kodi shows a QR code and a code like ABCD-EFGH; approve the box in My Account (or the BGPVR Player app on the phone) and Kodi sets up Live TV by itself (Simple Setup)
+- The box gets a sign-in of its own, listed in My Account &gt; Devices as Kodi; signing it out there makes Kodi ask to sign in again at the next start. The account password is never stored on the box
+- Sign in another way keeps the username and password sign-in; Advanced Setup (recordings) still uses it
+- Installs that are already set up keep working with no change
+v1.1.1 (1 Nov 2026)
 - Advanced Setup connects to the Tvheadend (HTSP) address and port the BGPVR server announces (suite 2.9.419+), so it works when the web address is behind Cloudflare; a manual address in Settings still wins
 v1.1.0 (1 Nov 2026)
 - Choose the TV client: Simple Setup (IPTV Simple Client: live TV, guide, catch-up) or Advanced Setup (Tvheadend HTSP Client: adds recordings, timers and the recordings list); asked once at first setup, changeable in Settings &gt; TV client; the other client is disabled
@@ -40,7 +47,7 @@ v1.0.3 (31 Oct 2026)
     </assets>
   </extension>
 
-</addon><addon id="plugin.video.bgpvr" name="BGPVR Live TV" version="1.1.2" provider-name="BGPVR">
+</addon><addon id="plugin.video.bgpvr" name="BGPVR Live TV" version="1.1.3" provider-name="BGPVR">
 
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
@@ -67,7 +74,9 @@ v1.0.3 (31 Oct 2026)
     </description>
     <platform>all</platform>
     <license>MIT</license>
-    <news>v1.1.2 (1 Nov 2026)
+    <news>v1.1.3 (6 Nov 2026)
+- Plays on a box signed in with the phone (BGPVR Setup 1.2.0): its own device credential is the play token
+v1.1.2 (1 Nov 2026)
 - Server certificates are checked (Kodi's CA list); clear message when the check fails; self-signed only when allowed in BGPVR Setup &gt; Advanced
 v1.1.1 (31 Oct 2026)
 - Play addresses carry the stream token, never the account password (fetched again once if the server refuses it)
