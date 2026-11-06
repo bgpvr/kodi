@@ -37,6 +37,7 @@ except ImportError:
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "lib"))
 import bgpvr_qr  # noqa: E402
+MEDIA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "media")
 
 ADDON_ID   = "service.bgpvr.setup"
 PVR_ID     = "pvr.iptvsimple"
@@ -507,9 +508,7 @@ def ensure_pvr_installed(install_pending_ref, pid=PVR_ID):
 
     if not dialog.yesno(
         "BGPVR Setup",
-        f"{name} is required for Live TV.\n\n"
-        "Kodi will download it now.\n"
-        "Accept any dependency prompts when asked.\n\n"
+        f"{name} is required for Live TV. Kodi will download it now; accept any dependency prompts.\n\n"
         "Continue?",
     ):
         return False
@@ -649,13 +648,17 @@ def make_ui(monitor):
             self.cancelled = self.again = self.is_expired = False
             self.files = []
             self.addControl(xbmcgui.ControlImage(0, 0, 1280, 720, self._file(bgpvr_qr.png([[True]], 1, 0)),
-                                                 colorDiffuse="F2000000"))
+                                                 colorDiffuse="FF000000"))
             self.qr = xbmcgui.ControlImage(90, 140, 440, 440, "", aspectRatio=1)
             self.title = xbmcgui.ControlLabel(590, 130, 640, 50, L(30402), font="font30_title")
             self.how = xbmcgui.ControlTextBox(590, 200, 640, 120, font="font13")
             self.code = xbmcgui.ControlLabel(590, 330, 640, 80, "", font="font45")
             self.left = xbmcgui.ControlLabel(590, 420, 640, 40, "", font="font13")
-            self.button = xbmcgui.ControlButton(590, 500, 440, 70, L(30401))
+            # own textures: the skin's default button is a light-grey slab under white text (Kodi 21.3, Estuary)
+            self.button = xbmcgui.ControlButton(590, 500, 440, 70, L(30401),
+                                                focusTexture=os.path.join(MEDIA, "button-focus.png"),
+                                                noFocusTexture=os.path.join(MEDIA, "button-nofocus.png"),
+                                                textOffsetX=20, textColor="FFFFFFFF", focusedColor="FFFFFFFF")
             for c in (self.qr, self.title, self.how, self.code, self.left, self.button):
                 self.addControl(c)
 
@@ -672,6 +675,7 @@ def make_ui(monitor):
             self.qr.setColorDiffuse("FFFFFFFF")
             self.how.setText(L(30403).replace("{address}", address))
             self.code.setLabel(code)
+            self.shown = code
             self.button.setLabel(L(30401))
             self.show()
             self.setFocus(self.button)
@@ -683,6 +687,7 @@ def make_ui(monitor):
             """The code ran out: True = the viewer asked for a new one, False = another way."""
             self.is_expired = True
             self.qr.setColorDiffuse("30FFFFFF")
+            self.code.setLabel(f"[COLOR 40FFFFFF]{self.shown}[/COLOR]")           # dimmed, like the QR
             self.left.setLabel(L(30405))
             self.button.setLabel(L(30406))
             self.setFocus(self.button)
@@ -808,11 +813,8 @@ def finish_setup(state, client, pid, server_url, username, password, dialog):
 
     dialog.ok(
         "BGPVR Setup — Done!",
-        f"Connected to:  {server_url}\n"
-        f"User:          {username}\n\n"
-        "Kodi will now restart to activate Live TV and EPG.\n\n"
-        "[COLOR gray]To use a different server later: change the URL in\n"
-        "Add-ons → BGPVR Setup → Settings, then restart Kodi.[/COLOR]",
+        f"Connected to {server_url} as {username}.\n\n"
+        "Kodi will now restart to start Live TV and the guide.",
     )
     xbmc.executebuiltin("Quit")
 
@@ -938,11 +940,7 @@ def typed_setup(state, client, pid, default_url, dialog):
     # ---- Collect server URL ----
     dialog.ok(
         "BGPVR Setup",
-        "Welcome! Enter your BGPVR server details to set up Live TV and EPG.\n\n"
-        "You will need:\n"
-        "  • Your server URL  (e.g. https://pvr.bgpvr.com)\n"
-        "  • Your username\n"
-        "  • Your password",
+        "You will need your server URL (e.g. https://pvr.bgpvr.com), your username and your password.",
     )
 
     server_url = dialog.input(
@@ -982,8 +980,8 @@ def typed_setup(state, client, pid, default_url, dialog):
     if not ok:
         dialog.ok(
             "BGPVR Setup — Connection Failed",
-            f"Could not connect to server:\n{msg}\n\n"
-            "Check the URL and your credentials, then restart Kodi to try again.",
+            f"Could not connect: {msg}\n\n"
+            "Check the URL, username and password, then restart Kodi to try again.",
         )
         return
 

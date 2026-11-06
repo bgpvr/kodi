@@ -34,12 +34,12 @@ msgid "How should Kodi show BGPVR TV?"
 msgstr "Как Kodi да показва телевизията от BGPVR?"
 
 msgctxt "#30304"
-msgid "Simple Setup (recommended): IPTV Simple Client with live TV, the guide and catch-up.[CR][CR]Advanced Setup: Tvheadend HTSP Client, which adds recordings, timers and the recordings list. It uses your password for the Tvheadend connection, and that connection (port 9982) is not encrypted.[CR][CR]You can change this later in BGPVR Setup > Settings > TV client."
-msgstr "Лесна настройка (препоръчва се): IPTV Simple Client с телевизия на живо, програмата и гледане назад.[CR][CR]Разширена настройка: Tvheadend HTSP Client, който добавя записи, таймери и списъка със записи. Използва паролата ви за връзката с Tvheadend и тази връзка (порт 9982) не е криптирана.[CR][CR]Можете да промените избора по-късно в BGPVR Setup > Настройки > ТВ клиент."
+msgid "Simple Setup (recommended): live TV, guide, catch-up.[CR]Advanced Setup: adds recordings; sends your password unencrypted (port 9982).[CR]Change it later in Settings > TV client."
+msgstr "Лесна настройка (препоръчва се): ТВ на живо, програма, гледане назад.[CR]Разширена: и записи, но паролата отива некриптирана (порт 9982). Смяна: Настройки > ТВ клиент."
 
 msgctxt "#30306"
-msgid "On Linux, Kodi's TV clients come from the system. Install it once in a terminal:[CR][CR]sudo apt install {pkg}[CR][CR]Then restart Kodi."
-msgstr "В Linux ТВ клиентите на Kodi идват от системата. Инсталирайте го веднъж в терминал:[CR][CR]sudo apt install {pkg}[CR][CR]После рестартирайте Kodi."
+msgid "On Linux, Kodi's TV clients come from the system. Run this once in a terminal, then restart Kodi:[CR][CR]sudo apt install {pkg}"
+msgstr "В Linux ТВ клиентите на Kodi идват от системата. Изпълнете това веднъж в терминал и рестартирайте Kodi:[CR][CR]sudo apt install {pkg}"
 
 msgctxt "#30307"
 msgid "The Tvheadend server did not answer on port 9982. Its address (ask your provider):"

@@ -6,11 +6,11 @@
   </requires>
 
   
-  <extension point="xbmc.service" library="service.py" start="startup" />
-  
   <extension point="xbmc.python.script" library="setup_now.py">
     <provides>executable</provides>
   </extension>
+  
+  <extension point="xbmc.service" library="service.py" start="startup" />
 
   <extension point="xbmc.addon.metadata">
     <summary lang="en">1-Click BGPVR Live TV Setup</summary>
@@ -36,7 +36,8 @@
 - The box gets a sign-in of its own, listed in My Account &gt; Devices as Kodi; signing it out there makes Kodi ask to sign in again at the next start. The account password is never stored on the box
 - Sign in another way keeps the username and password sign-in; Advanced Setup (recordings) still uses it
 - Installs that are already set up keep working with no change
-- Run now works (Add-ons &gt; BGPVR Setup &gt; Run), and Settings has a Sign in with your phone button: sign in again or switch, with the phone, another way or Advanced Setup; the current sign-in stays until the new one succeeds
+- Run now works (Add-ons &gt; Program add-ons &gt; BGPVR Setup &gt; Run), and Settings has a Sign in with your phone button: sign in again or switch, with the phone, another way or Advanced Setup; the current sign-in stays until the new one succeeds
+- The sign-in screen has a solid background and a clear blue button; shorter setup messages that fit on screen
 v1.1.1 (1 Nov 2026)
 - Advanced Setup connects to the Tvheadend (HTSP) address and port the BGPVR server announces (suite 2.9.419+), so it works when the web address is behind Cloudflare; a manual address in Settings still wins
 v1.1.0 (1 Nov 2026)

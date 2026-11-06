@@ -34,11 +34,11 @@ msgid "How should Kodi show BGPVR TV?"
 msgstr ""
 
 msgctxt "#30304"
-msgid "Simple Setup (recommended): IPTV Simple Client with live TV, the guide and catch-up.[CR][CR]Advanced Setup: Tvheadend HTSP Client, which adds recordings, timers and the recordings list. It uses your password for the Tvheadend connection, and that connection (port 9982) is not encrypted.[CR][CR]You can change this later in BGPVR Setup > Settings > TV client."
+msgid "Simple Setup (recommended): live TV, guide, catch-up.[CR]Advanced Setup: adds recordings; sends your password unencrypted (port 9982).[CR]Change it later in Settings > TV client."
 msgstr ""
 
 msgctxt "#30306"
-msgid "On Linux, Kodi's TV clients come from the system. Install it once in a terminal:[CR][CR]sudo apt install {pkg}[CR][CR]Then restart Kodi."
+msgid "On Linux, Kodi's TV clients come from the system. Run this once in a terminal, then restart Kodi:[CR][CR]sudo apt install {pkg}"
 msgstr ""
 
 msgctxt "#30307"

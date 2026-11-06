@@ -475,6 +475,8 @@ class RunNowTest(PhoneBase):
         from xml.etree import ElementTree as ET
         ext = {e.get("point"): e.get("library") for e in ET.parse(base / "addon.xml").getroot().iter("extension")}
         self.assertEqual((ext.get("xbmc.service"), ext.get("xbmc.python.script")), ("service.py", "setup_now.py"))
+        first = next(ET.parse(base / "addon.xml").getroot().iter("extension")).get("point")
+        self.assertEqual(first, "xbmc.python.script")       # Kodi 21 enables Run only when the script comes first
         btn = [e for e in ET.parse(base / "resources" / "settings.xml").getroot().iter("setting") if e.get("id") == "btn_phone"]
         self.assertEqual([(b.get("type"), b.get("label"), b.get("action")) for b in btn],
                          [("action", "30402", "RunScript(service.bgpvr.setup)")])
@@ -501,7 +503,8 @@ class ScreenTest(unittest.TestCase):
 
             def __init__(self, *a, **k):
                 Control.n += 1
-                self.id, self.args, self.label, self.image, self.text, self.diffuse = Control.n, a, "", None, "", ""
+                self.id, self.args, self.kw, self.label, self.image, self.text = Control.n, a, k, "", None, ""
+                self.diffuse = k.get("colorDiffuse", "")
                 self.label = a[4] if len(a) > 4 and isinstance(a[4], str) and type(self).__name__ != "ControlImage" else ""
                 self.image = a[4] if type(self).__name__ == "ControlImage" else None
             def getId(self): return self.id
@@ -524,6 +527,16 @@ class ScreenTest(unittest.TestCase):
 
     def pngs(self):
         return sorted(os.listdir(os.path.join(self.tmp, "temp")))
+
+    def test_backdrop_and_button_look(self):
+        s = self.screen
+        self.assertEqual(s.controls[0].diffuse, "FF000000")                      # solid: the page behind never shows
+        k = s.button.kw
+        for tex in ("focusTexture", "noFocusTexture"):
+            self.assertTrue(Path(k[tex]).read_bytes().startswith(b"\x89PNG"), tex)
+            self.assertEqual(Path(k[tex]).parent.name, "media")
+        self.assertNotEqual(Path(k["focusTexture"]).read_bytes(), Path(k["noFocusTexture"]).read_bytes())
+        self.assertEqual((k["textColor"], k["focusedColor"]), ("FFFFFFFF", "FFFFFFFF"))
 
     def test_present_tick_close(self):
         s = self.screen
@@ -555,8 +568,9 @@ class ScreenTest(unittest.TestCase):
         self.xbmc.Monitor.waitForAbort = lambda m, t=0: waits.append(t) or (len(waits) == 2 and s.onControl(s.button)) or False
         self.assertTrue(s.expired())                                             # the button now says "Get a new code"
         self.assertEqual((s.button.label, s.left.label, s.qr.diffuse), ("S30406", "S30405", "30FFFFFF"))
+        self.assertEqual(s.code.label, "[COLOR 40FFFFFF]ABCD-EFGH[/COLOR]")      # the old code is dimmed
         s.present(b"", "WXYZ-2345", "x.test/account")
-        self.assertEqual((s.button.label, s.qr.diffuse, s.again), ("S30401", "FFFFFFFF", False))
+        self.assertEqual((s.button.label, s.qr.diffuse, s.again, s.code.label), ("S30401", "FFFFFFFF", False, "WXYZ-2345"))
         waits.clear()
         self.xbmc.Monitor.waitForAbort = lambda m, t=0: s.onAction(types.SimpleNamespace(getId=lambda: 10)) or False
         self.assertFalse(s.expired())
